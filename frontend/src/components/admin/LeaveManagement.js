@@ -62,9 +62,9 @@ export default function LeaveManagement() {
         days_per_year: parseInt(policyForm.days_per_year),
       });
       toast.success('Leave policy created!');
-      setPolicyDialog(false);
       setPolicyForm({ name: '', days_per_year: '' });
       fetchData();
+      setPolicyDialog(false);
     } catch (error) {
       toast.error('Failed to create policy');
     }

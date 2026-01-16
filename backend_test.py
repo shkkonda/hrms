@@ -368,16 +368,20 @@ class HRAPITester:
         print("\n📋 Authentication Tests")
         if not self.test_admin_registration():
             return False
-        if not self.test_employee_registration():
-            return False
-        self.test_login()
-        self.test_get_current_user()
         
-        # Employee Management Tests
+        # Employee Management Tests (create employee first)
         print("\n👥 Employee Management Tests")
         self.test_create_employee()
         self.test_list_employees()
         self.test_get_employee()
+        
+        # Now test employee registration linking to existing record
+        print("\n🔗 Employee Registration Linking Test")
+        if not self.test_employee_registration():
+            return False
+            
+        self.test_login()
+        self.test_get_current_user()
         
         # Payroll Management Tests
         print("\n💰 Payroll Management Tests")

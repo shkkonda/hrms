@@ -75,11 +75,16 @@ class HRAPITester:
             return False
 
     def test_employee_registration(self):
-        """Test employee user registration"""
+        """Test employee user registration - should link to existing employee record"""
+        # Use the same email as the employee record created by admin
+        if not hasattr(self, 'test_employee_email'):
+            self.log_test("Employee Registration", False, "No employee email to link to")
+            return False
+            
         employee_data = {
-            "email": f"employee_{datetime.now().strftime('%H%M%S')}@test.com",
+            "email": self.test_employee_email,
             "password": "EmpPass123!",
-            "full_name": "Test Employee",
+            "full_name": "John Doe",  # Should match the employee record
             "role": "employee"
         }
         
@@ -87,10 +92,10 @@ class HRAPITester:
         if success and 'access_token' in response:
             self.employee_token = response['access_token']
             self.employee_user = response['user']
-            self.log_test("Employee Registration", True)
+            self.log_test("Employee Registration (Linked to existing record)", True)
             return True
         else:
-            self.log_test("Employee Registration", False, f"Status: {status}")
+            self.log_test("Employee Registration (Linked to existing record)", False, f"Status: {status}")
             return False
 
     def test_login(self):

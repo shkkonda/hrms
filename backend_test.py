@@ -631,6 +631,7 @@ class HRAPITester:
         
         # Leave Management Tests (updated with assignments)
         print("\n📅 Leave Management Tests (UPDATED)")
+        self.test_create_leave_policy()  # Create the main policy first
         self.test_create_leave_policy_with_description()  # NEW: With description field
         self.test_list_leave_policies()
         

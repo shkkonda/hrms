@@ -197,6 +197,10 @@ export default function EmployeeManagement() {
               <CardContent>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
+                    <p className="text-zinc-600">Employee ID</p>
+                    <p className="font-medium text-zinc-900">{employee.employee_id}</p>
+                  </div>
+                  <div>
                     <p className="text-zinc-600">Department</p>
                     <p className="font-medium text-zinc-900">{employee.department}</p>
                   </div>
@@ -204,6 +208,14 @@ export default function EmployeeManagement() {
                     <p className="text-zinc-600">Joining Date</p>
                     <p className="font-medium text-zinc-900">{employee.joining_date}</p>
                   </div>
+                  {employee.reporting_manager_id && (
+                    <div>
+                      <p className="text-zinc-600">Reports To</p>
+                      <p className="font-medium text-zinc-900">
+                        {employees.find((e) => e.id === employee.reporting_manager_id)?.name || 'N/A'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

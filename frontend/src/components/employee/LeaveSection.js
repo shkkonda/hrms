@@ -96,9 +96,8 @@ export default function LeaveSection() {
     }
   };
 
-  const getPolicyName = (policyId) => {
-    const policy = policies.find((p) => p.id === policyId);
-    return policy ? policy.name : 'Unknown';
+  const getPolicyName = (leaveType) => {
+    return leaveType; // Now just return the leave type string
   };
 
   if (loading) {

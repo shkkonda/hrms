@@ -49,12 +49,10 @@ export default function LeaveSection() {
 
   const fetchData = async () => {
     try {
-      const [policiesRes, requestsRes, balancesRes] = await Promise.all([
-        api.get('/leave-policies'),
+      const [requestsRes, balancesRes] = await Promise.all([
         api.get('/leave-requests'),
         api.get('/leave-requests/balance'),
       ]);
-      setPolicies(policiesRes.data);
       setRequests(requestsRes.data);
       setBalances(balancesRes.data);
     } catch (error) {

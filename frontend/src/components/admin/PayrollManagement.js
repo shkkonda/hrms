@@ -116,30 +116,29 @@ export default function PayrollManagement() {
   };
 
   if (loading) {
-    return <div className=text-zinc-600>Loading...</div>;
+    return <div className="text-zinc-600">Loading...</div>;
   }
 
   return (
-    <div className=space-y-6>
+    <div className="space-y-6">
       <div>
-        <h2 className=text-2xl font-semibold text-zinc-900>Payroll Management</h2>
-        <p className=text-sm text-zinc-600 mt-1>Create payroll structures and assign to employees</p>
+        <h2 className="text-2xl font-semibold text-zinc-900">Payroll Management</h2>
+        <p className="text-sm text-zinc-600 mt-1">Create payroll structures and assign to employees</p>
       </div>
 
-      <Tabs defaultValue=structures className=w-full>
-        <TabsList className=grid w-full max-w-2xl grid-cols-3>
-          <TabsTrigger value=structures>Payroll Structures</TabsTrigger>
-          <TabsTrigger value=assign>Assign Payroll</TabsTrigger>
-          <TabsTrigger value=payslips>Generate Payslips</TabsTrigger>
+      <Tabs defaultValue="structures" className="w-full">
+        <TabsList className="grid w-full max-w-2xl grid-cols-3">
+          <TabsTrigger value="structures">Payroll Structures</TabsTrigger>
+          <TabsTrigger value="assign">Assign Payroll</TabsTrigger>
+          <TabsTrigger value="payslips">Generate Payslips</TabsTrigger>
         </TabsList>
 
-        {/* Payroll Structures Tab */}
-        <TabsContent value=structures className=space-y-4>
-          <div className=flex justify-end>
+        <TabsContent value="structures" className="space-y-4">
+          <div className="flex justify-end">
             <Dialog open={structureDialog} onOpenChange={setStructureDialog}>
               <DialogTrigger asChild>
-                <Button className=bg-zinc-900 hover:bg-zinc-800 data-testid=create-structure-button>
-                  <Plus className=h-4 w-4 mr-2 />
+                <Button className="bg-zinc-900 hover:bg-zinc-800" data-testid="create-structure-button">
+                  <Plus className="h-4 w-4 mr-2" />
                   Create Payroll Structure
                 </Button>
               </DialogTrigger>
@@ -150,13 +149,13 @@ export default function PayrollManagement() {
                     Define a salary structure that can be assigned to multiple employees
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleCreateStructure} className=space-y-4>
-                  <div className=space-y-2>
-                    <Label htmlFor=structure_name>Structure Name</Label>
+                <form onSubmit={handleCreateStructure} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="structure_name">Structure Name</Label>
                     <Input
-                      id=structure_name
-                      data-testid=structure-name-input
-                      placeholder=e.g., Senior Engineer, Manager L2
+                      id="structure_name"
+                      data-testid="structure-name-input"
+                      placeholder="e.g., Senior Engineer, Manager L2"
                       value={structureForm.name}
                       onChange={(e) =>
                         setStructureForm({ ...structureForm, name: e.target.value })
@@ -164,14 +163,14 @@ export default function PayrollManagement() {
                       required
                     />
                   </div>
-                  <div className=space-y-2>
-                    <Label htmlFor=basic_salary>Basic Salary</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="basic_salary">Basic Salary</Label>
                     <Input
-                      id=basic_salary
-                      data-testid=structure-basic-salary-input
-                      type=number
-                      step=0.01
-                      placeholder=5000
+                      id="basic_salary"
+                      data-testid="structure-basic-salary-input"
+                      type="number"
+                      step="0.01"
+                      placeholder="5000"
                       value={structureForm.basic_salary}
                       onChange={(e) =>
                         setStructureForm({ ...structureForm, basic_salary: e.target.value })
@@ -179,35 +178,35 @@ export default function PayrollManagement() {
                       required
                     />
                   </div>
-                  <div className=space-y-2>
-                    <Label htmlFor=allowances>Allowances</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="allowances">Allowances</Label>
                     <Input
-                      id=allowances
-                      data-testid=structure-allowances-input
-                      type=number
-                      step=0.01
-                      placeholder=500
+                      id="allowances"
+                      data-testid="structure-allowances-input"
+                      type="number"
+                      step="0.01"
+                      placeholder="500"
                       value={structureForm.allowances}
                       onChange={(e) =>
                         setStructureForm({ ...structureForm, allowances: e.target.value })
                       }
                     />
                   </div>
-                  <div className=space-y-2>
-                    <Label htmlFor=deductions>Deductions</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="deductions">Deductions</Label>
                     <Input
-                      id=deductions
-                      data-testid=structure-deductions-input
-                      type=number
-                      step=0.01
-                      placeholder=200
+                      id="deductions"
+                      data-testid="structure-deductions-input"
+                      type="number"
+                      step="0.01"
+                      placeholder="200"
                       value={structureForm.deductions}
                       onChange={(e) =>
                         setStructureForm({ ...structureForm, deductions: e.target.value })
                       }
                     />
                   </div>
-                  <Button type=submit className=w-full bg-zinc-900 hover:bg-zinc-800 data-testid=submit-structure-button>
+                  <Button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800" data-testid="submit-structure-button">
                     Create Structure
                   </Button>
                 </form>
@@ -215,43 +214,43 @@ export default function PayrollManagement() {
             </Dialog>
           </div>
 
-          <div className=grid gap-4>
+          <div className="grid gap-4">
             {structures.length === 0 ? (
               <Card>
-                <CardContent className=py-12 text-center>
-                  <p className=text-zinc-600>No payroll structures yet. Create one!</p>
+                <CardContent className="py-12 text-center">
+                  <p className="text-zinc-600">No payroll structures yet. Create one!</p>
                 </CardContent>
               </Card>
             ) : (
               structures.map((structure) => (
-                <Card key={structure.id} className=border-zinc-200 data-testid=payroll-structure-card>
+                <Card key={structure.id} className="border-zinc-200" data-testid="payroll-structure-card">
                   <CardHeader>
-                    <CardTitle className=text-lg text-zinc-900>{structure.name}</CardTitle>
+                    <CardTitle className="text-lg text-zinc-900">{structure.name}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className=space-y-3>
-                      <div className=flex justify-between text-sm>
-                        <span className=text-zinc-600>Basic Salary</span>
-                        <span className=font-medium text-zinc-900>
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-600">Basic Salary</span>
+                        <span className="font-medium text-zinc-900">
                           ${structure.basic_salary.toFixed(2)}
                         </span>
                       </div>
-                      <div className=flex justify-between text-sm>
-                        <span className=text-zinc-600>Allowances</span>
-                        <span className=font-medium text-green-600>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-600">Allowances</span>
+                        <span className="font-medium text-green-600">
                           +${structure.allowances.toFixed(2)}
                         </span>
                       </div>
-                      <div className=flex justify-between text-sm>
-                        <span className=text-zinc-600>Deductions</span>
-                        <span className=font-medium text-red-600>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-600">Deductions</span>
+                        <span className="font-medium text-red-600">
                           -${structure.deductions.toFixed(2)}
                         </span>
                       </div>
-                      <div className=pt-3 border-t border-zinc-200>
-                        <div className=flex justify-between>
-                          <span className=font-semibold text-zinc-900>Net Salary</span>
-                          <span className=font-semibold text-lg text-zinc-900>
+                      <div className="pt-3 border-t border-zinc-200">
+                        <div className="flex justify-between">
+                          <span className="font-semibold text-zinc-900">Net Salary</span>
+                          <span className="font-semibold text-lg text-zinc-900">
                             ${(structure.basic_salary + structure.allowances - structure.deductions).toFixed(2)}
                           </span>
                         </div>
@@ -264,12 +263,11 @@ export default function PayrollManagement() {
           </div>
         </TabsContent>
 
-        {/* Assign Payroll Tab */}
-        <TabsContent value=assign className=space-y-4>
-          <Card className=border-zinc-200>
+        <TabsContent value="assign" className="space-y-4">
+          <Card className="border-zinc-200">
             <CardHeader>
-              <CardTitle className=flex items-center gap-2 text-zinc-900>
-                <DollarSign className=h-5 w-5 />
+              <CardTitle className="flex items-center gap-2 text-zinc-900">
+                <DollarSign className="h-5 w-5" />
                 Assign Payroll to Employee
               </CardTitle>
               <CardDescription>Link an employee to a payroll structure</CardDescription>
@@ -277,7 +275,7 @@ export default function PayrollManagement() {
             <CardContent>
               <Dialog open={assignDialog} onOpenChange={setAssignDialog}>
                 <DialogTrigger asChild>
-                  <Button className=w-full bg-zinc-900 hover:bg-zinc-800 data-testid=assign-payroll-button>
+                  <Button className="w-full bg-zinc-900 hover:bg-zinc-800" data-testid="assign-payroll-button">
                     Assign Payroll
                   </Button>
                 </DialogTrigger>
@@ -288,8 +286,8 @@ export default function PayrollManagement() {
                       Select an employee and payroll structure
                     </DialogDescription>
                   </DialogHeader>
-                  <form onSubmit={handleAssignPayroll} className=space-y-4>
-                    <div className=space-y-2>
+                  <form onSubmit={handleAssignPayroll} className="space-y-4">
+                    <div className="space-y-2">
                       <Label>Employee</Label>
                       <Select
                         value={assignForm.employee_id}
@@ -298,8 +296,8 @@ export default function PayrollManagement() {
                         }
                         required
                       >
-                        <SelectTrigger data-testid=assign-employee-select>
-                          <SelectValue placeholder=Select employee />
+                        <SelectTrigger data-testid="assign-employee-select">
+                          <SelectValue placeholder="Select employee" />
                         </SelectTrigger>
                         <SelectContent>
                           {employees.map((emp) => (
@@ -310,7 +308,7 @@ export default function PayrollManagement() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className=space-y-2>
+                    <div className="space-y-2">
                       <Label>Payroll Structure</Label>
                       <Select
                         value={assignForm.payroll_structure_id}
@@ -319,8 +317,8 @@ export default function PayrollManagement() {
                         }
                         required
                       >
-                        <SelectTrigger data-testid=assign-structure-select>
-                          <SelectValue placeholder=Select payroll structure />
+                        <SelectTrigger data-testid="assign-structure-select">
+                          <SelectValue placeholder="Select payroll structure" />
                         </SelectTrigger>
                         <SelectContent>
                           {structures.map((struct) => (
@@ -331,7 +329,7 @@ export default function PayrollManagement() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <Button type=submit className=w-full bg-zinc-900 hover:bg-zinc-800 data-testid=submit-assign-button>
+                    <Button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800" data-testid="submit-assign-button">
                       Assign Payroll
                     </Button>
                   </form>
@@ -341,12 +339,11 @@ export default function PayrollManagement() {
           </Card>
         </TabsContent>
 
-        {/* Generate Payslips Tab */}
-        <TabsContent value=payslips className=space-y-4>
-          <Card className=border-zinc-200>
+        <TabsContent value="payslips" className="space-y-4">
+          <Card className="border-zinc-200">
             <CardHeader>
-              <CardTitle className=flex items-center gap-2 text-zinc-900>
-                <FileText className=h-5 w-5 />
+              <CardTitle className="flex items-center gap-2 text-zinc-900">
+                <FileText className="h-5 w-5" />
                 Generate Payslip
               </CardTitle>
               <CardDescription>Create monthly payslips for employees</CardDescription>
@@ -354,7 +351,7 @@ export default function PayrollManagement() {
             <CardContent>
               <Dialog open={payslipDialog} onOpenChange={setPayslipDialog}>
                 <DialogTrigger asChild>
-                  <Button className=w-full bg-zinc-900 hover:bg-zinc-800 data-testid=generate-payslip-button>
+                  <Button className="w-full bg-zinc-900 hover:bg-zinc-800" data-testid="generate-payslip-button">
                     Generate Payslip
                   </Button>
                 </DialogTrigger>
@@ -365,8 +362,8 @@ export default function PayrollManagement() {
                       Create a payslip for a specific month
                     </DialogDescription>
                   </DialogHeader>
-                  <form onSubmit={handleGeneratePayslip} className=space-y-4>
-                    <div className=space-y-2>
+                  <form onSubmit={handleGeneratePayslip} className="space-y-4">
+                    <div className="space-y-2">
                       <Label>Employee</Label>
                       <Select
                         value={payslipForm.employee_id}
@@ -375,8 +372,8 @@ export default function PayrollManagement() {
                         }
                         required
                       >
-                        <SelectTrigger data-testid=payslip-employee-select>
-                          <SelectValue placeholder=Select employee />
+                        <SelectTrigger data-testid="payslip-employee-select">
+                          <SelectValue placeholder="Select employee" />
                         </SelectTrigger>
                         <SelectContent>
                           {employees.map((emp) => (
@@ -387,12 +384,12 @@ export default function PayrollManagement() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className=space-y-2>
-                      <Label htmlFor=month>Month</Label>
+                    <div className="space-y-2">
+                      <Label htmlFor="month">Month</Label>
                       <Input
-                        id=month
-                        data-testid=payslip-month-input
-                        type=month
+                        id="month"
+                        data-testid="payslip-month-input"
+                        type="month"
                         value={payslipForm.month}
                         onChange={(e) =>
                           setPayslipForm({ ...payslipForm, month: e.target.value })
@@ -400,7 +397,7 @@ export default function PayrollManagement() {
                         required
                       />
                     </div>
-                    <Button type=submit className=w-full bg-zinc-900 hover:bg-zinc-800 data-testid=submit-payslip-button>
+                    <Button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800" data-testid="submit-payslip-button">
                       Generate Payslip
                     </Button>
                   </form>

@@ -743,21 +743,25 @@ async def get_leave_balance(current_user: User = Depends(get_current_user)):
     if not employee:
         raise HTTPException(status_code=404, detail="Employee profile not found")
     
-    policies = await db.leave_policies.find({}, {"_id": 0}).to_list(1000)
+    # Get leave assignments for this employee
+    assignments = await db.leave_assignments.find({"employee_id": employee["id"]}, {"_id": 0}).to_list(1000)
     balances = []
     
-    for policy in policies:
+    for assignment in assignments:
+        # Get policy details
+        policy = await db.leave_policies.find_one({"id": assignment["leave_policy_id"]}, {"_id": 0})
+        if not policy:
+            continue
+        
         # Calculate used days from approved leave requests
         approved_requests = await db.leave_requests.find({
             "employee_id": employee["id"],
-            "leave_policy_id": policy["id"],
+            "leave_policy_id": assignment["leave_policy_id"],
             "status": "approved"
         }, {"_id": 0}).to_list(1000)
         
         used_days = 0
         for req in approved_requests:
-            # Simple day calculation (can be improved)
-            from datetime import datetime
             start = datetime.strptime(req["start_date"], "%Y-%m-%d")
             end = datetime.strptime(req["end_date"], "%Y-%m-%d")
             used_days += (end - start).days + 1
@@ -765,9 +769,9 @@ async def get_leave_balance(current_user: User = Depends(get_current_user)):
         balances.append(LeaveBalance(
             leave_policy_id=policy["id"],
             leave_policy_name=policy["name"],
-            total_days=policy["days_per_year"],
+            allocated_days=assignment["allocated_days"],
             used_days=used_days,
-            remaining_days=policy["days_per_year"] - used_days
+            remaining_days=assignment["allocated_days"] - used_days
         ))
     
     return balances

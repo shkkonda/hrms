@@ -72,10 +72,12 @@ class Token(BaseModel):
 class Employee(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    employee_id: str = Field(default_factory=lambda: f"EMP{str(uuid.uuid4())[:8].upper()}")
     name: str
     email: EmailStr
     department: str
     joining_date: str
+    reporting_manager_id: Optional[str] = None
     invited: bool = False
     user_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -85,6 +87,7 @@ class EmployeeCreate(BaseModel):
     email: EmailStr
     department: str
     joining_date: str
+    reporting_manager_id: Optional[str] = None
 
 class Payroll(BaseModel):
     model_config = ConfigDict(extra="ignore")

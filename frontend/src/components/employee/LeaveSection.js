@@ -37,7 +37,7 @@ export default function LeaveSection() {
   const [loading, setLoading] = useState(true);
   const [applyDialog, setApplyDialog] = useState(false);
   const [formData, setFormData] = useState({
-    leave_policy_id: '',
+    leave_type: '',
     start_date: '',
     end_date: '',
     reason: '',

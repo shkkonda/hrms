@@ -269,7 +269,7 @@ export default function LeaveSection() {
                     <div className="flex justify-between items-start">
                       <div>
                         <CardTitle className="text-lg text-zinc-900">
-                          {getPolicyName(request.leave_policy_id)}
+                          {getPolicyName(request.leave_type)}
                         </CardTitle>
                         <CardDescription className="mt-1">
                           {request.start_date} to {request.end_date}

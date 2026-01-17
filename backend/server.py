@@ -300,12 +300,34 @@ async def get_employee(employee_id: str, current_user: User = Depends(get_curren
 
 # ============= PAYROLL ROUTES =============
 
+@api_router.post("/payroll-structures", response_model=PayrollStructure)
+async def create_payroll_structure(structure_data: PayrollStructureCreate, admin: User = Depends(get_admin_user)):
+    structure = PayrollStructure(**structure_data.model_dump())
+    structure_dict = structure.model_dump()
+    structure_dict["created_at"] = structure_dict["created_at"].isoformat()
+    
+    await db.payroll_structures.insert_one(structure_dict)
+    return structure
+
+@api_router.get("/payroll-structures", response_model=List[PayrollStructure])
+async def list_payroll_structures(admin: User = Depends(get_admin_user)):
+    structures = await db.payroll_structures.find({}, {"_id": 0}).to_list(1000)
+    for struct in structures:
+        if isinstance(struct.get("created_at"), str):
+            struct["created_at"] = datetime.fromisoformat(struct["created_at"])
+    return structures
+
 @api_router.post("/payroll", response_model=Payroll)
-async def create_payroll(payroll_data: PayrollCreate, admin: User = Depends(get_admin_user)):
+async def assign_payroll(payroll_data: PayrollCreate, admin: User = Depends(get_admin_user)):
     # Check if employee exists
     employee = await db.employees.find_one({"id": payroll_data.employee_id}, {"_id": 0})
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
+    
+    # Check if payroll structure exists
+    structure = await db.payroll_structures.find_one({"id": payroll_data.payroll_structure_id}, {"_id": 0})
+    if not structure:
+        raise HTTPException(status_code=404, detail="Payroll structure not found")
     
     # Check if payroll already exists for this employee
     existing = await db.payroll.find_one({"employee_id": payroll_data.employee_id}, {"_id": 0})
@@ -313,7 +335,7 @@ async def create_payroll(payroll_data: PayrollCreate, admin: User = Depends(get_
         # Update existing payroll
         await db.payroll.update_one(
             {"employee_id": payroll_data.employee_id},
-            {"$set": payroll_data.model_dump()}
+            {"$set": {"payroll_structure_id": payroll_data.payroll_structure_id}}
         )
         updated = await db.payroll.find_one({"employee_id": payroll_data.employee_id}, {"_id": 0})
         if isinstance(updated.get("created_at"), str):
@@ -327,14 +349,22 @@ async def create_payroll(payroll_data: PayrollCreate, admin: User = Depends(get_
     await db.payroll.insert_one(payroll_dict)
     return payroll
 
-@api_router.get("/payroll/{employee_id}", response_model=Optional[Payroll])
+@api_router.get("/payroll/{employee_id}")
 async def get_payroll(employee_id: str, admin: User = Depends(get_admin_user)):
     payroll = await db.payroll.find_one({"employee_id": employee_id}, {"_id": 0})
     if not payroll:
         return None
     if isinstance(payroll.get("created_at"), str):
         payroll["created_at"] = datetime.fromisoformat(payroll["created_at"])
-    return Payroll(**payroll)
+    
+    # Get payroll structure details
+    structure = await db.payroll_structures.find_one({"id": payroll["payroll_structure_id"]}, {"_id": 0})
+    if structure:
+        return {
+            **payroll,
+            "structure": structure
+        }
+    return payroll
 
 # ============= PAYSLIP ROUTES =============
 

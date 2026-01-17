@@ -473,6 +473,135 @@ async def get_payroll(employee_id: str, admin: User = Depends(get_admin_user)):
         }
     return payroll
 
+# ============= PRINT FORMAT ROUTES =============
+
+@api_router.post("/print-formats", response_model=PrintFormat)
+async def create_print_format(format_data: PrintFormatCreate, admin: User = Depends(get_admin_user)):
+    # Validate Jinja2 template
+    try:
+        env = Environment(loader=BaseLoader())
+        template = env.from_string(format_data.template_html)
+        # Test render with dummy data
+        template.render(
+            employee_name="Test Employee",
+            employee_id="EMP123",
+            month="2025-01",
+            basic_salary=5000,
+            allowances=500,
+            deductions=200,
+            net_pay=5300,
+            generated_date="2025-01-15"
+        )
+    except TemplateError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid Jinja2 template: {str(e)}")
+    
+    # If this is set as default, unset other defaults
+    if format_data.is_default:
+        await db.print_formats.update_many({}, {"$set": {"is_default": False}})
+    
+    print_format = PrintFormat(**format_data.model_dump())
+    format_dict = print_format.model_dump()
+    format_dict["created_at"] = format_dict["created_at"].isoformat()
+    
+    await db.print_formats.insert_one(format_dict)
+    return print_format
+
+@api_router.get("/print-formats", response_model=List[PrintFormat])
+async def list_print_formats(admin: User = Depends(get_admin_user)):
+    formats = await db.print_formats.find({}, {"_id": 0}).to_list(1000)
+    for fmt in formats:
+        if isinstance(fmt.get("created_at"), str):
+            fmt["created_at"] = datetime.fromisoformat(fmt["created_at"])
+    return formats
+
+@api_router.get("/print-formats/{format_id}", response_model=PrintFormat)
+async def get_print_format(format_id: str, admin: User = Depends(get_admin_user)):
+    fmt = await db.print_formats.find_one({"id": format_id}, {"_id": 0})
+    if not fmt:
+        raise HTTPException(status_code=404, detail="Print format not found")
+    if isinstance(fmt.get("created_at"), str):
+        fmt["created_at"] = datetime.fromisoformat(fmt["created_at"])
+    return PrintFormat(**fmt)
+
+@api_router.put("/print-formats/{format_id}", response_model=PrintFormat)
+async def update_print_format(format_id: str, format_data: PrintFormatCreate, admin: User = Depends(get_admin_user)):
+    # Validate Jinja2 template
+    try:
+        env = Environment(loader=BaseLoader())
+        template = env.from_string(format_data.template_html)
+        template.render(
+            employee_name="Test",
+            employee_id="EMP123",
+            month="2025-01",
+            basic_salary=5000,
+            allowances=500,
+            deductions=200,
+            net_pay=5300,
+            generated_date="2025-01-15"
+        )
+    except TemplateError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid Jinja2 template: {str(e)}")
+    
+    # If this is set as default, unset other defaults
+    if format_data.is_default:
+        await db.print_formats.update_many({}, {"$set": {"is_default": False}})
+    
+    result = await db.print_formats.update_one(
+        {"id": format_id},
+        {"$set": format_data.model_dump()}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Print format not found")
+    
+    updated = await db.print_formats.find_one({"id": format_id}, {"_id": 0})
+    if isinstance(updated.get("created_at"), str):
+        updated["created_at"] = datetime.fromisoformat(updated["created_at"])
+    return PrintFormat(**updated)
+
+@api_router.delete("/print-formats/{format_id}")
+async def delete_print_format(format_id: str, admin: User = Depends(get_admin_user)):
+    result = await db.print_formats.delete_one({"id": format_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Print format not found")
+    return {"message": "Print format deleted successfully"}
+
+@api_router.post("/print-formats/{format_id}/preview")
+async def preview_print_format(format_id: str, admin: User = Depends(get_admin_user)):
+    """Preview print format with sample data"""
+    fmt = await db.print_formats.find_one({"id": format_id}, {"_id": 0})
+    if not fmt:
+        raise HTTPException(status_code=404, detail="Print format not found")
+    
+    try:
+        env = Environment(loader=BaseLoader())
+        template = env.from_string(fmt["template_html"])
+        html_content = template.render(
+            employee_name="John Doe",
+            employee_id="EMP12AB34CD",
+            employee_email="john@company.com",
+            department="Engineering",
+            month="January 2025",
+            basic_salary=5000.00,
+            allowances=500.00,
+            deductions=200.00,
+            net_pay=5300.00,
+            generated_date=datetime.now(timezone.utc).strftime("%B %d, %Y")
+        )
+        
+        # Generate PDF
+        pdf_buffer = io.BytesIO()
+        HTML(string=html_content).write_pdf(pdf_buffer)
+        pdf_buffer.seek(0)
+        
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename=preview_{fmt['name']}.pdf"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Template rendering error: {str(e)}")
+
 # ============= PAYSLIP ROUTES =============
 
 @api_router.post("/payslips/generate", response_model=Payslip)

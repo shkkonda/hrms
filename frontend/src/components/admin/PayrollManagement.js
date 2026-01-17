@@ -24,54 +24,80 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { DollarSign, FileText } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DollarSign, FileText, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../lib/api';
 
 export default function PayrollManagement() {
   const [employees, setEmployees] = useState([]);
+  const [structures, setStructures] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [payrollDialog, setPayrollDialog] = useState(false);
+  const [structureDialog, setStructureDialog] = useState(false);
+  const [assignDialog, setAssignDialog] = useState(false);
   const [payslipDialog, setPayslipDialog] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState('');
-  const [payrollForm, setPayrollForm] = useState({
-    employee_id: '',
+  
+  const [structureForm, setStructureForm] = useState({
+    name: '',
     basic_salary: '',
     allowances: '',
     deductions: '',
   });
+  
+  const [assignForm, setAssignForm] = useState({
+    employee_id: '',
+    payroll_structure_id: '',
+  });
+  
   const [payslipForm, setPayslipForm] = useState({
     employee_id: '',
     month: '',
   });
 
   useEffect(() => {
-    fetchEmployees();
+    fetchData();
   }, []);
 
-  const fetchEmployees = async () => {
+  const fetchData = async () => {
     try {
-      const response = await api.get('/employees');
-      setEmployees(response.data);
+      const [employeesRes, structuresRes] = await Promise.all([
+        api.get('/employees'),
+        api.get('/payroll-structures'),
+      ]);
+      setEmployees(employeesRes.data);
+      setStructures(structuresRes.data);
     } catch (error) {
-      toast.error('Failed to fetch employees');
+      toast.error('Failed to fetch data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateStructure = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/payroll-structures', {
+        ...structureForm,
+        basic_salary: parseFloat(structureForm.basic_salary),
+        allowances: parseFloat(structureForm.allowances) || 0,
+        deductions: parseFloat(structureForm.deductions) || 0,
+      });
+      toast.success('Payroll structure created!');
+      setStructureForm({ name: '', basic_salary: '', allowances: '', deductions: '' });
+      fetchData();
+      setStructureDialog(false);
+    } catch (error) {
+      toast.error('Failed to create payroll structure');
     }
   };
 
   const handleAssignPayroll = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/payroll', {
-        ...payrollForm,
-        basic_salary: parseFloat(payrollForm.basic_salary),
-        allowances: parseFloat(payrollForm.allowances) || 0,
-        deductions: parseFloat(payrollForm.deductions) || 0,
-      });
+      await api.post('/payroll', assignForm);
       toast.success('Payroll assigned successfully!');
-      setPayrollForm({ employee_id: '', basic_salary: '', allowances: '', deductions: '' });
-      setPayrollDialog(false);
+      setAssignForm({ employee_id: '', payroll_structure_id: '' });
+      setAssignDialog(false);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to assign payroll');
     }
@@ -90,181 +116,300 @@ export default function PayrollManagement() {
   };
 
   if (loading) {
-    return <div className="text-zinc-600">Loading...</div>;
+    return <div className=\"text-zinc-600\">Loading...</div>;
   }
 
   return (
-    <div className="space-y-6">
+    <div className=\"space-y-6\">
       <div>
-        <h2 className="text-2xl font-semibold text-zinc-900">Payroll Management</h2>
-        <p className="text-sm text-zinc-600 mt-1">Assign salaries and generate payslips</p>
+        <h2 className=\"text-2xl font-semibold text-zinc-900\">Payroll Management</h2>
+        <p className=\"text-sm text-zinc-600 mt-1\">Create payroll structures and assign to employees</p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        {/* Assign Payroll Card */}
-        <Card className="border-zinc-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-zinc-900">
-              <DollarSign className="h-5 w-5" />
-              Assign Payroll
-            </CardTitle>
-            <CardDescription>Set salary details for employees</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Dialog open={payrollDialog} onOpenChange={setPayrollDialog}>
+      <Tabs defaultValue=\"structures\" className=\"w-full\">
+        <TabsList className=\"grid w-full max-w-2xl grid-cols-3\">
+          <TabsTrigger value=\"structures\">Payroll Structures</TabsTrigger>
+          <TabsTrigger value=\"assign\">Assign Payroll</TabsTrigger>
+          <TabsTrigger value=\"payslips\">Generate Payslips</TabsTrigger>
+        </TabsList>
+
+        {/* Payroll Structures Tab */}
+        <TabsContent value=\"structures\" className=\"space-y-4\">
+          <div className=\"flex justify-end\">
+            <Dialog open={structureDialog} onOpenChange={setStructureDialog}>
               <DialogTrigger asChild>
-                <Button className="w-full bg-zinc-900 hover:bg-zinc-800" data-testid="assign-payroll-button">
-                  Assign Payroll
+                <Button className=\"bg-zinc-900 hover:bg-zinc-800\" data-testid=\"create-structure-button\">
+                  <Plus className=\"h-4 w-4 mr-2\" />
+                  Create Payroll Structure
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Assign Payroll</DialogTitle>
+                  <DialogTitle>Create Payroll Structure</DialogTitle>
                   <DialogDescription>
-                    Set salary components for an employee
+                    Define a salary structure that can be assigned to multiple employees
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleAssignPayroll} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Employee</Label>
-                    <Select
-                      value={payrollForm.employee_id}
-                      onValueChange={(value) =>
-                        setPayrollForm({ ...payrollForm, employee_id: value })
-                      }
-                      required
-                    >
-                      <SelectTrigger data-testid="payroll-employee-select">
-                        <SelectValue placeholder="Select employee" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {employees.map((emp) => (
-                          <SelectItem key={emp.id} value={emp.id}>
-                            {emp.name} - {emp.department}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="basic_salary">Basic Salary</Label>
+                <form onSubmit={handleCreateStructure} className=\"space-y-4\">
+                  <div className=\"space-y-2\">
+                    <Label htmlFor=\"structure_name\">Structure Name</Label>
                     <Input
-                      id="basic_salary"
-                      data-testid="basic-salary-input"
-                      type="number"
-                      step="0.01"
-                      placeholder="5000"
-                      value={payrollForm.basic_salary}
+                      id=\"structure_name\"
+                      data-testid=\"structure-name-input\"
+                      placeholder=\"e.g., Senior Engineer, Manager L2\"
+                      value={structureForm.name}
                       onChange={(e) =>
-                        setPayrollForm({ ...payrollForm, basic_salary: e.target.value })
+                        setStructureForm({ ...structureForm, name: e.target.value })
                       }
                       required
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="allowances">Allowances</Label>
+                  <div className=\"space-y-2\">
+                    <Label htmlFor=\"basic_salary\">Basic Salary</Label>
                     <Input
-                      id="allowances"
-                      data-testid="allowances-input"
-                      type="number"
-                      step="0.01"
-                      placeholder="500"
-                      value={payrollForm.allowances}
+                      id=\"basic_salary\"
+                      data-testid=\"structure-basic-salary-input\"
+                      type=\"number\"
+                      step=\"0.01\"
+                      placeholder=\"5000\"
+                      value={structureForm.basic_salary}
                       onChange={(e) =>
-                        setPayrollForm({ ...payrollForm, allowances: e.target.value })
+                        setStructureForm({ ...structureForm, basic_salary: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className=\"space-y-2\">
+                    <Label htmlFor=\"allowances\">Allowances</Label>
+                    <Input
+                      id=\"allowances\"
+                      data-testid=\"structure-allowances-input\"
+                      type=\"number\"
+                      step=\"0.01\"
+                      placeholder=\"500\"
+                      value={structureForm.allowances}
+                      onChange={(e) =>
+                        setStructureForm({ ...structureForm, allowances: e.target.value })
                       }
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="deductions">Deductions</Label>
+                  <div className=\"space-y-2\">
+                    <Label htmlFor=\"deductions\">Deductions</Label>
                     <Input
-                      id="deductions"
-                      data-testid="deductions-input"
-                      type="number"
-                      step="0.01"
-                      placeholder="200"
-                      value={payrollForm.deductions}
+                      id=\"deductions\"
+                      data-testid=\"structure-deductions-input\"
+                      type=\"number\"
+                      step=\"0.01\"
+                      placeholder=\"200\"
+                      value={structureForm.deductions}
                       onChange={(e) =>
-                        setPayrollForm({ ...payrollForm, deductions: e.target.value })
+                        setStructureForm({ ...structureForm, deductions: e.target.value })
                       }
                     />
                   </div>
-                  <Button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800" data-testid="submit-payroll-button">
+                  <Button type=\"submit\" className=\"w-full bg-zinc-900 hover:bg-zinc-800\" data-testid=\"submit-structure-button\">
+                    Create Structure
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <div className=\"grid gap-4\">
+            {structures.length === 0 ? (
+              <Card>
+                <CardContent className=\"py-12 text-center\">
+                  <p className=\"text-zinc-600\">No payroll structures yet. Create one!</p>
+                </CardContent>
+              </Card>
+            ) : (
+              structures.map((structure) => (
+                <Card key={structure.id} className=\"border-zinc-200\" data-testid=\"payroll-structure-card\">
+                  <CardHeader>
+                    <CardTitle className=\"text-lg text-zinc-900\">{structure.name}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className=\"space-y-3\">
+                      <div className=\"flex justify-between text-sm\">
+                        <span className=\"text-zinc-600\">Basic Salary</span>
+                        <span className=\"font-medium text-zinc-900\">
+                          ${structure.basic_salary.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className=\"flex justify-between text-sm\">
+                        <span className=\"text-zinc-600\">Allowances</span>
+                        <span className=\"font-medium text-green-600\">
+                          +${structure.allowances.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className=\"flex justify-between text-sm\">
+                        <span className=\"text-zinc-600\">Deductions</span>
+                        <span className=\"font-medium text-red-600\">
+                          -${structure.deductions.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className=\"pt-3 border-t border-zinc-200\">
+                        <div className=\"flex justify-between\">
+                          <span className=\"font-semibold text-zinc-900\">Net Salary</span>
+                          <span className=\"font-semibold text-lg text-zinc-900\">
+                            ${(structure.basic_salary + structure.allowances - structure.deductions).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Assign Payroll Tab */}
+        <TabsContent value=\"assign\" className=\"space-y-4\">
+          <Card className=\"border-zinc-200\">
+            <CardHeader>
+              <CardTitle className=\"flex items-center gap-2 text-zinc-900\">
+                <DollarSign className=\"h-5 w-5\" />
+                Assign Payroll to Employee
+              </CardTitle>
+              <CardDescription>Link an employee to a payroll structure</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Dialog open={assignDialog} onOpenChange={setAssignDialog}>
+                <DialogTrigger asChild>
+                  <Button className=\"w-full bg-zinc-900 hover:bg-zinc-800\" data-testid=\"assign-payroll-button\">
                     Assign Payroll
                   </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </CardContent>
-        </Card>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Assign Payroll</DialogTitle>
+                    <DialogDescription>
+                      Select an employee and payroll structure
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleAssignPayroll} className=\"space-y-4\">
+                    <div className=\"space-y-2\">
+                      <Label>Employee</Label>
+                      <Select
+                        value={assignForm.employee_id}
+                        onValueChange={(value) =>
+                          setAssignForm({ ...assignForm, employee_id: value })
+                        }
+                        required
+                      >
+                        <SelectTrigger data-testid=\"assign-employee-select\">
+                          <SelectValue placeholder=\"Select employee\" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {employees.map((emp) => (
+                            <SelectItem key={emp.id} value={emp.id}>
+                              {emp.name} ({emp.employee_id}) - {emp.department}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className=\"space-y-2\">
+                      <Label>Payroll Structure</Label>
+                      <Select
+                        value={assignForm.payroll_structure_id}
+                        onValueChange={(value) =>
+                          setAssignForm({ ...assignForm, payroll_structure_id: value })
+                        }
+                        required
+                      >
+                        <SelectTrigger data-testid=\"assign-structure-select\">
+                          <SelectValue placeholder=\"Select payroll structure\" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {structures.map((struct) => (
+                            <SelectItem key={struct.id} value={struct.id}>
+                              {struct.name} - Net: ${(struct.basic_salary + struct.allowances - struct.deductions).toFixed(2)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button type=\"submit\" className=\"w-full bg-zinc-900 hover:bg-zinc-800\" data-testid=\"submit-assign-button\">
+                      Assign Payroll
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        {/* Generate Payslip Card */}
-        <Card className="border-zinc-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-zinc-900">
-              <FileText className="h-5 w-5" />
-              Generate Payslip
-            </CardTitle>
-            <CardDescription>Create monthly payslips for employees</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Dialog open={payslipDialog} onOpenChange={setPayslipDialog}>
-              <DialogTrigger asChild>
-                <Button className="w-full bg-zinc-900 hover:bg-zinc-800" data-testid="generate-payslip-button">
-                  Generate Payslip
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Generate Payslip</DialogTitle>
-                  <DialogDescription>
-                    Create a payslip for a specific month
-                  </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleGeneratePayslip} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Employee</Label>
-                    <Select
-                      value={payslipForm.employee_id}
-                      onValueChange={(value) =>
-                        setPayslipForm({ ...payslipForm, employee_id: value })
-                      }
-                      required
-                    >
-                      <SelectTrigger data-testid="payslip-employee-select">
-                        <SelectValue placeholder="Select employee" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {employees.map((emp) => (
-                          <SelectItem key={emp.id} value={emp.id}>
-                            {emp.name} - {emp.department}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="month">Month</Label>
-                    <Input
-                      id="month"
-                      data-testid="payslip-month-input"
-                      type="month"
-                      value={payslipForm.month}
-                      onChange={(e) =>
-                        setPayslipForm({ ...payslipForm, month: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-                  <Button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800" data-testid="submit-payslip-button">
+        {/* Generate Payslips Tab */}
+        <TabsContent value=\"payslips\" className=\"space-y-4\">
+          <Card className=\"border-zinc-200\">
+            <CardHeader>
+              <CardTitle className=\"flex items-center gap-2 text-zinc-900\">
+                <FileText className=\"h-5 w-5\" />
+                Generate Payslip
+              </CardTitle>
+              <CardDescription>Create monthly payslips for employees</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Dialog open={payslipDialog} onOpenChange={setPayslipDialog}>
+                <DialogTrigger asChild>
+                  <Button className=\"w-full bg-zinc-900 hover:bg-zinc-800\" data-testid=\"generate-payslip-button\">
                     Generate Payslip
                   </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </CardContent>
-        </Card>
-      </div>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Generate Payslip</DialogTitle>
+                    <DialogDescription>
+                      Create a payslip for a specific month
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleGeneratePayslip} className=\"space-y-4\">
+                    <div className=\"space-y-2\">
+                      <Label>Employee</Label>
+                      <Select
+                        value={payslipForm.employee_id}
+                        onValueChange={(value) =>
+                          setPayslipForm({ ...payslipForm, employee_id: value })
+                        }
+                        required
+                      >
+                        <SelectTrigger data-testid=\"payslip-employee-select\">
+                          <SelectValue placeholder=\"Select employee\" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {employees.map((emp) => (
+                            <SelectItem key={emp.id} value={emp.id}>
+                              {emp.name} ({emp.employee_id}) - {emp.department}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className=\"space-y-2\">
+                      <Label htmlFor=\"month\">Month</Label>
+                      <Input
+                        id=\"month\"
+                        data-testid=\"payslip-month-input\"
+                        type=\"month\"
+                        value={payslipForm.month}
+                        onChange={(e) =>
+                          setPayslipForm({ ...payslipForm, month: e.target.value })
+                        }
+                        required
+                      />
+                    </div>
+                    <Button type=\"submit\" className=\"w-full bg-zinc-900 hover:bg-zinc-800\" data-testid=\"submit-payslip-button\">
+                      Generate Payslip
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

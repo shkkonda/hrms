@@ -661,7 +661,7 @@ async def get_employee_payslips(employee_id: str, current_user: User = Depends(g
     return sorted(payslips, key=lambda x: x["month"], reverse=True)
 
 @api_router.get("/payslips/{payslip_id}/download")
-async def download_payslip(payslip_id: str, current_user: User = Depends(get_current_user)):
+async def download_payslip(payslip_id: str, format_id: Optional[str] = None, current_user: User = Depends(get_current_user)):
     payslip = await db.payslips.find_one({"id": payslip_id}, {"_id": 0})
     if not payslip:
         raise HTTPException(status_code=404, detail="Payslip not found")
@@ -675,75 +675,129 @@ async def download_payslip(payslip_id: str, current_user: User = Depends(get_cur
     # Get employee details
     employee = await db.employees.find_one({"id": payslip["employee_id"]}, {"_id": 0})
     
-    # Generate PDF
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
-    elements = []
-    styles = getSampleStyleSheet()
+    # Get print format
+    if format_id:
+        print_format = await db.print_formats.find_one({"id": format_id}, {"_id": 0})
+    else:
+        # Get default format
+        print_format = await db.print_formats.find_one({"is_default": True}, {"_id": 0})
     
-    # Title
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=24,
-        textColor=colors.HexColor('#1a1a1a'),
-        spaceAfter=30,
-        alignment=TA_CENTER
-    )
-    elements.append(Paragraph("PAYSLIP", title_style))
-    elements.append(Spacer(1, 0.3*inch))
-    
-    # Employee details
-    info_data = [
-        ['Employee Name:', employee['name']],
-        ['Email:', employee['email']],
-        ['Department:', employee['department']],
-        ['Month:', payslip['month']],
-        ['Generated On:', datetime.fromisoformat(payslip['generated_at']).strftime('%Y-%m-%d') if isinstance(payslip['generated_at'], str) else payslip['generated_at'].strftime('%Y-%m-%d')],
-    ]
-    info_table = Table(info_data, colWidths=[2*inch, 4*inch])
-    info_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 11),
-        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#4a4a4a')),
-        ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#1a1a1a')),
-        ('LEFTPADDING', (0, 0), (-1, -1), 0),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    elements.append(info_table)
-    elements.append(Spacer(1, 0.5*inch))
-    
-    # Salary breakdown
-    salary_data = [
-        ['Description', 'Amount'],
-        ['Basic Salary', f"${payslip['basic_salary']:.2f}"],
-        ['Allowances', f"${payslip['allowances']:.2f}"],
-        ['Deductions', f"-${payslip['deductions']:.2f}"],
-        ['Net Pay', f"${payslip['net_pay']:.2f}"],
-    ]
-    salary_table = Table(salary_data, colWidths=[3*inch, 2*inch])
-    salary_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2a2a2a')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 11),
-        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#cccccc')),
-        ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#f0f0f0')),
-        ('FONTNAME', (0, 4), (-1, 4), 'Helvetica-Bold'),
-        ('TOPPADDING', (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-    ]))
-    elements.append(salary_table)
-    
-    doc.build(elements)
-    buffer.seek(0)
-    
-    return StreamingResponse(
-        buffer,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=payslip_{payslip['month']}_{employee['name'].replace(' ', '_')}.pdf"}
-    )
+    if print_format:
+        # Use custom template
+        try:
+            env = Environment(loader=BaseLoader())
+            template = env.from_string(print_format["template_html"])
+            
+            # Get department name
+            department_name = "N/A"
+            if employee.get("department_id"):
+                dept = await db.departments.find_one({"id": employee["department_id"]}, {"_id": 0})
+                if dept:
+                    department_name = dept["name"]
+            elif employee.get("department"):
+                department_name = employee["department"]
+            
+            html_content = template.render(
+                employee_name=employee["name"],
+                employee_id=employee.get("employee_id", "N/A"),
+                employee_email=employee["email"],
+                department=department_name,
+                month=payslip["month"],
+                basic_salary=payslip["basic_salary"],
+                allowances=payslip["allowances"],
+                deductions=payslip["deductions"],
+                net_pay=payslip["net_pay"],
+                generated_date=datetime.fromisoformat(payslip["generated_at"]).strftime("%B %d, %Y") if isinstance(payslip["generated_at"], str) else payslip["generated_at"].strftime("%B %d, %Y")
+            )
+            
+            pdf_buffer = io.BytesIO()
+            HTML(string=html_content).write_pdf(pdf_buffer)
+            pdf_buffer.seek(0)
+            
+            return StreamingResponse(
+                pdf_buffer,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"attachment; filename=payslip_{payslip['month']}_{employee['name'].replace(' ', '_')}.pdf"}
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
+    else:
+        # Fallback to simple default format
+        default_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; padding: 40px; }}
+                .header {{ text-align: center; margin-bottom: 30px; }}
+                .header h1 {{ margin: 0; color: #333; }}
+                .info {{ margin: 20px 0; }}
+                .info-row {{ display: flex; margin: 10px 0; }}
+                .info-label {{ width: 150px; font-weight: bold; color: #666; }}
+                .info-value {{ color: #333; }}
+                .salary-table {{ width: 100%; border-collapse: collapse; margin-top: 30px; }}
+                .salary-table th {{ background: #333; color: white; padding: 12px; text-align: left; }}
+                .salary-table td {{ padding: 12px; border-bottom: 1px solid #ddd; }}
+                .total-row {{ font-weight: bold; background: #f5f5f5; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>PAYSLIP</h1>
+            </div>
+            <div class="info">
+                <div class="info-row">
+                    <div class="info-label">Employee Name:</div>
+                    <div class="info-value">{employee["name"]}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Employee ID:</div>
+                    <div class="info-value">{employee.get("employee_id", "N/A")}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Email:</div>
+                    <div class="info-value">{employee["email"]}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Month:</div>
+                    <div class="info-value">{payslip["month"]}</div>
+                </div>
+            </div>
+            <table class="salary-table">
+                <tr>
+                    <th>Description</th>
+                    <th style="text-align: right;">Amount</th>
+                </tr>
+                <tr>
+                    <td>Basic Salary</td>
+                    <td style="text-align: right;">${payslip["basic_salary"]:.2f}</td>
+                </tr>
+                <tr>
+                    <td>Allowances</td>
+                    <td style="text-align: right;">${payslip["allowances"]:.2f}</td>
+                </tr>
+                <tr>
+                    <td>Deductions</td>
+                    <td style="text-align: right;">-${payslip["deductions"]:.2f}</td>
+                </tr>
+                <tr class="total-row">
+                    <td>Net Pay</td>
+                    <td style="text-align: right;">${payslip["net_pay"]:.2f}</td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        
+        pdf_buffer = io.BytesIO()
+        HTML(string=default_html).write_pdf(pdf_buffer)
+        pdf_buffer.seek(0)
+        
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=payslip_{payslip['month']}_{employee['name'].replace(' ', '_')}.pdf"}
+        )
 
 # ============= LEAVE POLICY ROUTES =============
 

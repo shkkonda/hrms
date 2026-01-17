@@ -130,9 +130,9 @@ export default function LeaveSection() {
               <div className="space-y-2">
                 <Label>Leave Type</Label>
                 <Select
-                  value={formData.leave_policy_id}
+                  value={formData.leave_type}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, leave_policy_id: value })
+                    setFormData({ ...formData, leave_type: value })
                   }
                   required
                 >
@@ -140,9 +140,9 @@ export default function LeaveSection() {
                     <SelectValue placeholder="Select leave type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {policies.map((policy) => (
-                      <SelectItem key={policy.id} value={policy.id}>
-                        {policy.name} ({policy.days_per_year} days/year)
+                    {balances.map((balance) => (
+                      <SelectItem key={balance.leave_type} value={balance.leave_type}>
+                        {balance.leave_type} ({balance.remaining_days} days available)
                       </SelectItem>
                     ))}
                   </SelectContent>

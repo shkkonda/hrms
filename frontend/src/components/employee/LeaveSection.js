@@ -244,7 +244,7 @@ export default function LeaveSection() {
                         <div
                           className="bg-zinc-900 h-2 rounded-full transition-all"
                           style={{
-                            width: `${(balance.used_days / balance.total_days) * 100}%`,
+                            width: `${(balance.used_days / balance.allocated_days) * 100}%`,
                           }}
                         />
                       </div>

@@ -30,6 +30,7 @@ export default function EmployeeManagement() {
     email: '',
     department: '',
     joining_date: '',
+    reporting_manager_id: '',
   });
 
   useEffect(() => {

@@ -51,9 +51,13 @@ export default function EmployeeManagement() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/employees', formData);
+      const payload = {
+        ...formData,
+        reporting_manager_id: formData.reporting_manager_id || null,
+      };
+      await api.post('/employees', payload);
       toast.success('Employee added and invitation sent!');
-      setFormData({ name: '', email: '', department: '', joining_date: '' });
+      setFormData({ name: '', email: '', department: '', joining_date: '', reporting_manager_id: '' });
       fetchEmployees();
       setOpen(false);
     } catch (error) {

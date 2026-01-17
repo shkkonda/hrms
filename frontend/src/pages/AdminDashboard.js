@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Users, DollarSign, Calendar, LogOut, FileText } from 'lucide-react';
+import { Users, DollarSign, Calendar, LogOut, Building2 } from 'lucide-react';
 import EmployeeManagement from '../components/admin/EmployeeManagement';
 import PayrollManagement from '../components/admin/PayrollManagement';
 import LeaveManagement from '../components/admin/LeaveManagement';
+import DepartmentManagement from '../components/admin/DepartmentManagement';
 
 export default function AdminDashboard({ user, onLogout }) {
   const location = useLocation();
   const currentPath = location.pathname;
 
   const menuItems = [
+    { path: '/admin/departments', label: 'Departments', icon: Building2 },
     { path: '/admin/employees', label: 'Employees', icon: Users },
     { path: '/admin/payroll', label: 'Payroll', icon: DollarSign },
     { path: '/admin/leaves', label: 'Leave Management', icon: Calendar },

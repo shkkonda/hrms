@@ -710,10 +710,19 @@ async def create_leave_request(request_data: LeaveRequestCreate, current_user: U
     if not employee:
         raise HTTPException(status_code=404, detail="Employee profile not found")
     
-    # Verify leave policy exists
-    policy = await db.leave_policies.find_one({"id": request_data.leave_policy_id}, {"_id": 0})
+    # Verify employee has this leave type in their assigned policy
+    policy_assignment = await db.employee_policy_assignments.find_one({"employee_id": employee["id"]}, {"_id": 0})
+    if not policy_assignment:
+        raise HTTPException(status_code=400, detail="No leave policy assigned to you")
+    
+    policy = await db.leave_policies.find_one({"id": policy_assignment["leave_policy_id"]}, {"_id": 0})
     if not policy:
         raise HTTPException(status_code=404, detail="Leave policy not found")
+    
+    # Check if the leave type exists in the policy
+    leave_type_exists = any(lt["type"] == request_data.leave_type for lt in policy["leave_types"])
+    if not leave_type_exists:
+        raise HTTPException(status_code=400, detail=f"Leave type '{request_data.leave_type}' not available in your policy")
     
     leave_request = LeaveRequest(
         employee_id=employee["id"],

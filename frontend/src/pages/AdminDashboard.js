@@ -74,7 +74,8 @@ export default function AdminDashboard({ user, onLogout }) {
         {/* Main Content */}
         <main className="flex-1 p-6">
           <Routes>
-            <Route path="/" element={<EmployeeManagement />} />
+            <Route path="/" element={<DepartmentManagement />} />
+            <Route path="/departments" element={<DepartmentManagement />} />
             <Route path="/employees" element={<EmployeeManagement />} />
             <Route path="/payroll" element={<PayrollManagement />} />
             <Route path="/leaves" element={<LeaveManagement />} />

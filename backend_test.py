@@ -369,6 +369,199 @@ class HRAPITester:
             self.log_test("Delete Leave Policy", False, f"Status: {status}")
             return False
 
+    # ============= NEW FEATURE TESTS =============
+    
+    def test_create_department(self):
+        """NEW: Test creating department"""
+        dept_data = {
+            "name": "Engineering",
+            "description": "Software development and engineering team"
+        }
+        
+        success, response, status = self.make_request('POST', '/departments', dept_data, self.admin_token, expect_status=200)
+        if success and 'id' in response:
+            self.test_department_id = response['id']
+            self.log_test("Create Department", True)
+            return True
+        else:
+            self.log_test("Create Department", False, f"Status: {status}")
+            return False
+
+    def test_list_departments(self):
+        """NEW: Test listing departments"""
+        success, response, status = self.make_request('GET', '/departments', token=self.admin_token)
+        if success and isinstance(response, list):
+            self.log_test("List Departments", True)
+            return True
+        else:
+            self.log_test("List Departments", False, f"Status: {status}")
+            return False
+
+    def test_update_employee(self):
+        """NEW: Test updating employee"""
+        if not self.test_employee_id:
+            self.log_test("Update Employee", False, "No employee ID to test")
+            return False
+            
+        update_data = {
+            "name": "John Doe Updated",
+            "joining_date": "2024-02-01"
+        }
+        
+        success, response, status = self.make_request('PUT', f'/employees/{self.test_employee_id}', update_data, self.admin_token, expect_status=200)
+        if success and response.get('name') == "John Doe Updated":
+            self.log_test("Update Employee", True)
+            return True
+        else:
+            self.log_test("Update Employee", False, f"Status: {status}")
+            return False
+
+    def test_get_org_tree(self):
+        """NEW: Test getting organizational tree"""
+        if not self.test_employee_id:
+            self.log_test("Get Org Tree", False, "No employee ID to test")
+            return False
+            
+        success, response, status = self.make_request('GET', f'/employees/{self.test_employee_id}/org-tree', token=self.admin_token)
+        if success and 'subordinates' in response:
+            self.log_test("Get Org Tree", True)
+            return True
+        else:
+            self.log_test("Get Org Tree", False, f"Status: {status}")
+            return False
+
+    def test_create_payroll_structure(self):
+        """NEW: Test creating payroll structure"""
+        structure_data = {
+            "name": "Senior Engineer L2",
+            "basic_salary": 6000.00,
+            "allowances": 800.00,
+            "deductions": 300.00
+        }
+        
+        success, response, status = self.make_request('POST', '/payroll-structures', structure_data, self.admin_token, expect_status=200)
+        if success and 'id' in response:
+            self.test_payroll_structure_id = response['id']
+            self.log_test("Create Payroll Structure", True)
+            return True
+        else:
+            self.log_test("Create Payroll Structure", False, f"Status: {status}")
+            return False
+
+    def test_list_payroll_structures(self):
+        """NEW: Test listing payroll structures"""
+        success, response, status = self.make_request('GET', '/payroll-structures', token=self.admin_token)
+        if success and isinstance(response, list):
+            self.log_test("List Payroll Structures", True)
+            return True
+        else:
+            self.log_test("List Payroll Structures", False, f"Status: {status}")
+            return False
+
+    def test_assign_payroll_with_structure(self):
+        """NEW: Test assigning payroll using structure ID"""
+        if not self.test_employee_id or not self.test_payroll_structure_id:
+            self.log_test("Assign Payroll with Structure", False, "Missing employee or structure ID")
+            return False
+            
+        payroll_data = {
+            "employee_id": self.test_employee_id,
+            "payroll_structure_id": self.test_payroll_structure_id
+        }
+        
+        success, response, status = self.make_request('POST', '/payroll', payroll_data, self.admin_token, expect_status=200)
+        if success and response.get('employee_id') == self.test_employee_id:
+            self.log_test("Assign Payroll with Structure", True)
+            return True
+        else:
+            self.log_test("Assign Payroll with Structure", False, f"Status: {status}")
+            return False
+
+    def test_create_leave_policy_with_description(self):
+        """NEW: Test creating leave policy with description field"""
+        policy_data = {
+            "name": "Sick Leave",
+            "days_per_year": 10,
+            "description": "Medical leave for illness and health issues"
+        }
+        
+        success, response, status = self.make_request('POST', '/leave-policies', policy_data, self.admin_token, expect_status=200)
+        if success and 'id' in response and response.get('description'):
+            self.test_policy_id = response['id']  # Update for other tests
+            self.log_test("Create Leave Policy with Description", True)
+            return True
+        else:
+            self.log_test("Create Leave Policy with Description", False, f"Status: {status}")
+            return False
+
+    def test_create_leave_assignment(self):
+        """NEW: Test creating leave assignment"""
+        if not self.test_employee_id or not self.test_policy_id:
+            self.log_test("Create Leave Assignment", False, "Missing employee or policy ID")
+            return False
+            
+        assignment_data = {
+            "employee_id": self.test_employee_id,
+            "leave_policy_id": self.test_policy_id,
+            "allocated_days": 15  # Custom allocation different from policy default
+        }
+        
+        success, response, status = self.make_request('POST', '/leave-assignments', assignment_data, self.admin_token, expect_status=200)
+        if success and 'id' in response:
+            self.test_leave_assignment_id = response['id']
+            self.log_test("Create Leave Assignment", True)
+            return True
+        else:
+            self.log_test("Create Leave Assignment", False, f"Status: {status}")
+            return False
+
+    def test_get_employee_leave_assignments(self):
+        """NEW: Test getting employee leave assignments"""
+        if not self.test_employee_id:
+            self.log_test("Get Employee Leave Assignments", False, "No employee ID to test")
+            return False
+            
+        success, response, status = self.make_request('GET', f'/leave-assignments/employee/{self.test_employee_id}', token=self.admin_token)
+        if success and isinstance(response, list):
+            self.log_test("Get Employee Leave Assignments", True)
+            return True
+        else:
+            self.log_test("Get Employee Leave Assignments", False, f"Status: {status}")
+            return False
+
+    def test_leave_balance_with_assignments(self):
+        """NEW: Test leave balance calculation using assignments instead of policies"""
+        success, response, status = self.make_request('GET', '/leave-requests/balance', token=self.employee_token)
+        if success and isinstance(response, list):
+            # Check if balance reflects assignment allocation (15 days) not policy default (10 days)
+            for balance in response:
+                if balance.get('allocated_days') == 15:  # Should match our assignment
+                    self.log_test("Leave Balance with Assignments", True)
+                    return True
+            self.log_test("Leave Balance with Assignments", False, "Balance doesn't reflect assignment allocation")
+            return False
+        else:
+            self.log_test("Leave Balance with Assignments", False, f"Status: {status}")
+            return False
+
+    def test_backward_compatibility_employee_department(self):
+        """NEW: Test backward compatibility - employee with old department field"""
+        employee_email = f"legacy_{datetime.now().strftime('%H%M%S')}@company.com"
+        employee_data = {
+            "name": "Legacy Employee",
+            "email": employee_email,
+            "department": "Marketing",  # OLD: Using department string instead of department_id
+            "joining_date": "2024-01-15"
+        }
+        
+        success, response, status = self.make_request('POST', '/employees', employee_data, self.admin_token, expect_status=200)
+        if success and 'id' in response:
+            self.log_test("Backward Compatibility - Employee Department", True)
+            return True
+        else:
+            self.log_test("Backward Compatibility - Employee Department", False, f"Status: {status}")
+            return False
+
     def run_all_tests(self):
         """Run comprehensive test suite"""
         print("🚀 Starting HR Management System Backend API Tests")

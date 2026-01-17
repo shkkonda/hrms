@@ -134,12 +134,16 @@ class HRAPITester:
             return False
 
     def test_create_employee(self):
-        """Test creating employee"""
+        """Test creating employee with new department_id field"""
+        # First create a department to use
+        if not self.test_department_id:
+            self.test_create_department()
+            
         employee_email = f"john_{datetime.now().strftime('%H%M%S')}@company.com"
         employee_data = {
             "name": "John Doe",
             "email": employee_email,
-            "department": "Engineering",
+            "department_id": self.test_department_id,  # NEW: Use department_id instead of department string
             "joining_date": "2024-01-15"
         }
         
@@ -147,10 +151,10 @@ class HRAPITester:
         if success and 'id' in response:
             self.test_employee_id = response['id']
             self.test_employee_email = employee_email  # Store for employee registration
-            self.log_test("Create Employee", True)
+            self.log_test("Create Employee (with department_id)", True)
             return True
         else:
-            self.log_test("Create Employee", False, f"Status: {status}")
+            self.log_test("Create Employee (with department_id)", False, f"Status: {status}")
             return False
 
     def test_list_employees(self):

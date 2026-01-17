@@ -498,39 +498,38 @@ class HRAPITester:
             self.log_test("Create Leave Policy with Description", False, f"Status: {status}")
             return False
 
-    def test_create_leave_assignment(self):
-        """NEW: Test creating leave assignment"""
+    def test_create_employee_policy_assignment(self):
+        """NEW: Test assigning leave policy to employee"""
         if not self.test_employee_id or not self.test_policy_id:
-            self.log_test("Create Leave Assignment", False, "Missing employee or policy ID")
+            self.log_test("Create Employee Policy Assignment", False, "Missing employee or policy ID")
             return False
             
         assignment_data = {
             "employee_id": self.test_employee_id,
-            "leave_policy_id": self.test_policy_id,
-            "allocated_days": 15  # Custom allocation different from policy default
+            "leave_policy_id": self.test_policy_id
         }
         
-        success, response, status = self.make_request('POST', '/leave-assignments', assignment_data, self.admin_token, expect_status=200)
+        success, response, status = self.make_request('POST', '/employee-policy-assignments', assignment_data, self.admin_token, expect_status=200)
         if success and 'id' in response:
             self.test_leave_assignment_id = response['id']
-            self.log_test("Create Leave Assignment", True)
+            self.log_test("Create Employee Policy Assignment", True)
             return True
         else:
-            self.log_test("Create Leave Assignment", False, f"Status: {status}")
+            self.log_test("Create Employee Policy Assignment", False, f"Status: {status}")
             return False
 
-    def test_get_employee_leave_assignments(self):
-        """NEW: Test getting employee leave assignments"""
+    def test_get_employee_policy_assignment(self):
+        """NEW: Test getting employee policy assignment"""
         if not self.test_employee_id:
-            self.log_test("Get Employee Leave Assignments", False, "No employee ID to test")
+            self.log_test("Get Employee Policy Assignment", False, "No employee ID to test")
             return False
             
-        success, response, status = self.make_request('GET', f'/leave-assignments/employee/{self.test_employee_id}', token=self.admin_token)
-        if success and isinstance(response, list):
-            self.log_test("Get Employee Leave Assignments", True)
+        success, response, status = self.make_request('GET', f'/employee-policy-assignments/employee/{self.test_employee_id}', token=self.admin_token)
+        if success and response and 'policy' in response:
+            self.log_test("Get Employee Policy Assignment", True)
             return True
         else:
-            self.log_test("Get Employee Leave Assignments", False, f"Status: {status}")
+            self.log_test("Get Employee Policy Assignment", False, f"Status: {status}")
             return False
 
     def test_leave_balance_with_assignments(self):

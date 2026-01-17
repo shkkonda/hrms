@@ -772,20 +772,22 @@ async def get_leave_balance(current_user: User = Depends(get_current_user)):
     if not employee:
         raise HTTPException(status_code=404, detail="Employee profile not found")
     
-    # Get leave assignments for this employee
-    assignments = await db.leave_assignments.find({"employee_id": employee["id"]}, {"_id": 0}).to_list(1000)
+    # Get employee's assigned policy
+    policy_assignment = await db.employee_policy_assignments.find_one({"employee_id": employee["id"]}, {"_id": 0})
+    if not policy_assignment:
+        return []  # No policy assigned yet
+    
+    policy = await db.leave_policies.find_one({"id": policy_assignment["leave_policy_id"]}, {"_id": 0})
+    if not policy or "leave_types" not in policy:
+        return []
+    
     balances = []
     
-    for assignment in assignments:
-        # Get policy details
-        policy = await db.leave_policies.find_one({"id": assignment["leave_policy_id"]}, {"_id": 0})
-        if not policy:
-            continue
-        
-        # Calculate used days from approved leave requests
+    for leave_type in policy["leave_types"]:
+        # Calculate used days from approved leave requests for this leave type
         approved_requests = await db.leave_requests.find({
             "employee_id": employee["id"],
-            "leave_policy_id": assignment["leave_policy_id"],
+            "leave_type": leave_type["type"],
             "status": "approved"
         }, {"_id": 0}).to_list(1000)
         
@@ -796,11 +798,10 @@ async def get_leave_balance(current_user: User = Depends(get_current_user)):
             used_days += (end - start).days + 1
         
         balances.append(LeaveBalance(
-            leave_policy_id=policy["id"],
-            leave_policy_name=policy["name"],
-            allocated_days=assignment["allocated_days"],
+            leave_type=leave_type["type"],
+            allocated_days=leave_type["days"],
             used_days=used_days,
-            remaining_days=assignment["allocated_days"] - used_days
+            remaining_days=leave_type["days"] - used_days
         ))
     
     return balances

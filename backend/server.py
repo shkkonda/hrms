@@ -350,6 +350,50 @@ async def get_employee(employee_id: str, current_user: User = Depends(get_curren
         employee["created_at"] = datetime.fromisoformat(employee["created_at"])
     return Employee(**employee)
 
+@api_router.put("/employees/{employee_id}", response_model=Employee)
+async def update_employee(employee_id: str, employee_data: EmployeeUpdate, admin: User = Depends(get_admin_user)):
+    employee = await db.employees.find_one({"id": employee_id}, {"_id": 0})
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    
+    update_data = {k: v for k, v in employee_data.model_dump().items() if v is not None}
+    if update_data:
+        await db.employees.update_one(
+            {"id": employee_id},
+            {"$set": update_data}
+        )
+    
+    updated = await db.employees.find_one({"id": employee_id}, {"_id": 0})
+    if isinstance(updated.get("created_at"), str):
+        updated["created_at"] = datetime.fromisoformat(updated["created_at"])
+    return Employee(**updated)
+
+@api_router.get("/employees/{employee_id}/org-tree")
+async def get_employee_org_tree(employee_id: str, current_user: User = Depends(get_current_user)):
+    """Get organizational tree for an employee showing subordinates"""
+    employee = await db.employees.find_one({"id": employee_id}, {"_id": 0})
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    
+    # Get all subordinates recursively
+    async def get_subordinates(manager_id):
+        subordinates = await db.employees.find({"reporting_manager_id": manager_id}, {"_id": 0}).to_list(1000)
+        result = []
+        for sub in subordinates:
+            sub_data = {
+                **sub,
+                "subordinates": await get_subordinates(sub["id"])
+            }
+            result.append(sub_data)
+        return result
+    
+    org_tree = {
+        **employee,
+        "subordinates": await get_subordinates(employee_id)
+    }
+    
+    return org_tree
+
 # ============= PAYROLL ROUTES =============
 
 @api_router.post("/payroll-structures", response_model=PayrollStructure)

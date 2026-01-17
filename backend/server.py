@@ -294,6 +294,25 @@ async def login(credentials: UserLogin):
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
+# ============= DEPARTMENT ROUTES =============
+
+@api_router.post("/departments", response_model=Department)
+async def create_department(dept_data: DepartmentCreate, admin: User = Depends(get_admin_user)):
+    department = Department(**dept_data.model_dump())
+    dept_dict = department.model_dump()
+    dept_dict["created_at"] = dept_dict["created_at"].isoformat()
+    
+    await db.departments.insert_one(dept_dict)
+    return department
+
+@api_router.get("/departments", response_model=List[Department])
+async def list_departments(current_user: User = Depends(get_current_user)):
+    departments = await db.departments.find({}, {"_id": 0}).to_list(1000)
+    for dept in departments:
+        if isinstance(dept.get("created_at"), str):
+            dept["created_at"] = datetime.fromisoformat(dept["created_at"])
+    return departments
+
 # ============= EMPLOYEE ROUTES =============
 
 @api_router.post("/employees", response_model=Employee)

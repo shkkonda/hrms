@@ -198,8 +198,7 @@ class LeaveRequestUpdate(BaseModel):
     status: Literal["approved", "rejected"]
 
 class LeaveBalance(BaseModel):
-    leave_policy_id: str
-    leave_policy_name: str
+    leave_type: str
     allocated_days: int
     used_days: int
     remaining_days: int

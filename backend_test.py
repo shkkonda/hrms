@@ -303,13 +303,13 @@ class HRAPITester:
             return False
 
     def test_create_leave_request(self):
-        """Test creating leave request as employee"""
-        if not self.test_policy_id:
-            self.log_test("Create Leave Request", False, "No policy ID to test")
+        """Test creating leave request as employee using leave_type"""
+        if not self.employee_token:
+            self.log_test("Create Leave Request", False, "No employee token to test")
             return False
             
         request_data = {
-            "leave_policy_id": self.test_policy_id,
+            "leave_type": "Casual Leave",  # Use leave type string, not policy ID
             "start_date": "2024-02-01",
             "end_date": "2024-02-03",
             "reason": "Personal work"
@@ -318,10 +318,10 @@ class HRAPITester:
         success, response, status = self.make_request('POST', '/leave-requests', request_data, self.employee_token, expect_status=200)
         if success and 'id' in response:
             self.test_leave_request_id = response['id']
-            self.log_test("Create Leave Request", True)
+            self.log_test("Create Leave Request (with leave_type)", True)
             return True
         else:
-            self.log_test("Create Leave Request", False, f"Status: {status}")
+            self.log_test("Create Leave Request (with leave_type)", False, f"Status: {status}")
             return False
 
     def test_list_leave_requests(self):

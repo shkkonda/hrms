@@ -206,10 +206,10 @@ export default function LeaveSection() {
               </Card>
             ) : (
               balances.map((balance) => (
-                <Card key={balance.leave_policy_id} className="border-zinc-200" data-testid="leave-balance-card">
+                <Card key={balance.leave_type} className="border-zinc-200" data-testid="leave-balance-card">
                   <CardHeader>
                     <CardTitle className="text-lg text-zinc-900">
-                      {balance.leave_policy_name}
+                      {balance.leave_type}
                     </CardTitle>
                     <CardDescription>Annual leave allocation</CardDescription>
                   </CardHeader>

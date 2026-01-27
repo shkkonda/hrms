@@ -2,6 +2,7 @@ from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
+from uuid import uuid4
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
@@ -15,7 +16,7 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 import io
 from jinja2 import Environment, BaseLoader, TemplateError
-from weasyprint import HTML, CSS
+# from weasyprint import HTML, CSS
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -115,16 +116,22 @@ class PayrollStructure(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
-    basic_salary: float
-    allowances: float = 0.0
-    deductions: float = 0.0
+    salary_types: list
+    net_salary: float
+    employee_count: int=0
+    print_format_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
+class SalaryType(BaseModel):
+    type: str
+    amount: float
 class PayrollStructureCreate(BaseModel):
     name: str
-    basic_salary: float
-    allowances: float = 0.0
-    deductions: float = 0.0
+    salary_types: List[SalaryType]
+    net_salary: float = 0.0
+    employee_count: int=0
+    print_format_id: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 class PayrollCreate(BaseModel):
     employee_id: str
@@ -306,6 +313,15 @@ async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 # ============= DEPARTMENT ROUTES =============
+@api_router.get("/departments-with-count")
+async def list_departments_with_count(admin: User = Depends(get_admin_user)):
+    departments = await db.departments.find({}, {"_id": 0}).to_list(1000)
+
+    for dept in departments:
+        count = await db.employees.count_documents({"department_id": dept["id"]})
+        dept["employee_count"] = count
+
+    return departments
 
 @api_router.post("/departments", response_model=Department)
 async def create_department(dept_data: DepartmentCreate, admin: User = Depends(get_admin_user)):
@@ -323,8 +339,35 @@ async def list_departments(current_user: User = Depends(get_current_user)):
         if isinstance(dept.get("created_at"), str):
             dept["created_at"] = datetime.fromisoformat(dept["created_at"])
     return departments
+@api_router.delete("/departments/{department_id}")
+async def delete_department(department_id: str, admin: User = Depends(get_admin_user)):
+    emp_count = await db.employees.count_documents({"department_id": department_id})
+
+    if emp_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete department with assigned employees"
+        )
+
+    result = await db.departments.delete_one({"id": department_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    return {"message": "Department deleted successfully"}
 
 # ============= EMPLOYEE ROUTES =============
+@api_router.delete("/employees/{employee_id}")
+async def delete_employee(employee_id: str, admin: User = Depends(get_admin_user)):
+    result = await db.employees.delete_one({"id": employee_id})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    
+    # Delete associated payroll record if it exists
+    # This ensures the employee_count in payroll structures is updated correctly
+    await db.payroll.delete_one({"employee_id": employee_id})
+    
+    return {"message": "Employee deleted successfully"}
 
 @api_router.post("/employees", response_model=Employee)
 async def create_employee(employee_data: EmployeeCreate, admin: User = Depends(get_admin_user)):
@@ -406,22 +449,85 @@ async def get_employee_org_tree(employee_id: str, current_user: User = Depends(g
     return org_tree
 
 # ============= PAYROLL ROUTES =============
+@api_router.delete("/payroll-structures/{structure_id}")
+async def delete_payroll_structure(
+    structure_id: str,
+    admin: User = Depends(get_admin_user)
+):
+    # 1. Check if any employee is using this payroll structure
+    assigned_employee = await db.payroll.find_one(
+        {"payroll_structure_id": structure_id}
+    )
 
-@api_router.post("/payroll-structures", response_model=PayrollStructure)
-async def create_payroll_structure(structure_data: PayrollStructureCreate, admin: User = Depends(get_admin_user)):
-    structure = PayrollStructure(**structure_data.model_dump())
-    structure_dict = structure.model_dump()
-    structure_dict["created_at"] = structure_dict["created_at"].isoformat()
+    if assigned_employee:
+        raise HTTPException(
+            status_code=400,
+            detail="This payroll structure is assigned to employees and cannot be deleted."
+        )
+
+    # 2. If not assigned, allow deletion
+    result = await db.payroll_structures.delete_one({"id": structure_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Structure not found")
+
+    return {"message": "Payroll structure deleted successfully"}
+@api_router.put("/payroll-structures/{structure_id}")
+async def update_payroll_structure(
+    structure_id: str,
+    data: PayrollStructureCreate,
+    admin: User = Depends(get_admin_user)
+):
+    net_salary = sum(item.amount for item in data.salary_types)
     
+    update_data = {
+        "name": data.name,
+        "salary_types": [item.dict() for item in data.salary_types],
+        "net_salary": net_salary,
+    }
+    
+    # Add print_format_id if provided
+    if data.print_format_id is not None:
+        update_data["print_format_id"] = data.print_format_id
+    
+    result = await db.payroll_structures.update_one(
+        {"id": structure_id},
+        {"$set": update_data}
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Structure not found")
+
+    return {"message": "Payroll structure updated"}
+@api_router.post("/payroll-structures", response_model=PayrollStructure)
+async def create_payroll_structure(
+    structure_data: PayrollStructureCreate,
+    admin: User = Depends(get_admin_user)
+):
+    total = sum(item.amount for item in structure_data.salary_types)
+
+    structure = PayrollStructure(
+        name=structure_data.name,
+        salary_types=structure_data.salary_types,
+        net_salary=total,
+        print_format_id=structure_data.print_format_id
+    )
+
+    structure_dict = structure.model_dump()
+    structure_dict["salary_types"] = [s.model_dump() for s in structure.salary_types]
+    structure_dict["created_at"] = structure_dict["created_at"].isoformat()
+
     await db.payroll_structures.insert_one(structure_dict)
     return structure
+
 
 @api_router.get("/payroll-structures", response_model=List[PayrollStructure])
 async def list_payroll_structures(admin: User = Depends(get_admin_user)):
     structures = await db.payroll_structures.find({}, {"_id": 0}).to_list(1000)
     for struct in structures:
-        if isinstance(struct.get("created_at"), str):
-            struct["created_at"] = datetime.fromisoformat(struct["created_at"])
+        count = await db.payroll.count_documents(
+            {"payroll_structure_id": struct["id"]}
+        )
+        struct["employee_count"] = count
     return structures
 
 @api_router.post("/payroll", response_model=Payroll)
@@ -569,6 +675,8 @@ async def delete_print_format(format_id: str, admin: User = Depends(get_admin_us
 @api_router.post("/print-formats/{format_id}/preview")
 async def preview_print_format(format_id: str, admin: User = Depends(get_admin_user)):
     """Preview print format with sample data"""
+    from fastapi.responses import HTMLResponse
+    
     fmt = await db.print_formats.find_one({"id": format_id}, {"_id": 0})
     if not fmt:
         raise HTTPException(status_code=404, detail="Print format not found")
@@ -582,23 +690,15 @@ async def preview_print_format(format_id: str, admin: User = Depends(get_admin_u
             employee_email="john@company.com",
             department="Engineering",
             month="January 2025",
-            basic_salary=5000.00,
-            allowances=500.00,
-            deductions=200.00,
-            net_pay=5300.00,
+            basic_salary=50000.00,
+            allowances=5000.00,
+            deductions=2000.00,
+            net_pay=53000.00,
             generated_date=datetime.now(timezone.utc).strftime("%B %d, %Y")
         )
         
-        # Generate PDF
-        pdf_buffer = io.BytesIO()
-        HTML(string=html_content).write_pdf(pdf_buffer)
-        pdf_buffer.seek(0)
+        return HTMLResponse(content=html_content)
         
-        return StreamingResponse(
-            pdf_buffer,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"inline; filename=preview_{fmt['name']}.pdf"}
-        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Template rendering error: {str(e)}")
 
@@ -629,15 +729,51 @@ async def generate_payslip(payslip_data: PayslipCreate, admin: User = Depends(ge
     if existing:
         raise HTTPException(status_code=400, detail="Payslip already generated for this month")
     
-    # Calculate net pay using structure
-    net_pay = structure["basic_salary"] + structure["allowances"] - structure["deductions"]
+    # Calculate basic_salary, allowances, and deductions from salary_types
+    salary_types = structure.get("salary_types", [])
+    if not salary_types:
+        raise HTTPException(status_code=400, detail="Payroll structure has no salary types defined")
+    
+    # Find basic salary (typically named "Basic", "Basic Salary", or first item)
+    basic_salary = 0.0
+    allowances = 0.0
+    deductions = 0.0
+    
+    for salary_type in salary_types:
+        # Handle both dict and object formats
+        if isinstance(salary_type, dict):
+            type_name = salary_type.get("type", "").lower()
+            amount = float(salary_type.get("amount", 0))
+        else:
+            type_name = getattr(salary_type, "type", "").lower()
+            amount = float(getattr(salary_type, "amount", 0))
+        
+        # Categorize salary types
+        if "basic" in type_name:
+            basic_salary += amount
+        elif any(keyword in type_name for keyword in ["deduction", "tax", "pf", "esi", "loan"]):
+            deductions += abs(amount)  # Ensure deductions are positive
+        else:
+            # Everything else is an allowance
+            allowances += amount
+    
+    # If no basic salary found, use the first salary type as basic
+    if basic_salary == 0 and salary_types:
+        first_type = salary_types[0]
+        if isinstance(first_type, dict):
+            basic_salary = float(first_type.get("amount", 0))
+        else:
+            basic_salary = float(getattr(first_type, "amount", 0))
+    
+    # Calculate net pay
+    net_pay = basic_salary + allowances - deductions
     
     payslip = Payslip(
         employee_id=payslip_data.employee_id,
         month=payslip_data.month,
-        basic_salary=structure["basic_salary"],
-        allowances=structure["allowances"],
-        deductions=structure["deductions"],
+        basic_salary=basic_salary,
+        allowances=allowances,
+        deductions=deductions,
         net_pay=net_pay
     )
     payslip_dict = payslip.model_dump()
@@ -646,11 +782,51 @@ async def generate_payslip(payslip_data: PayslipCreate, admin: User = Depends(ge
     await db.payslips.insert_one(payslip_dict)
     return payslip
 
+@api_router.get("/payslips", response_model=List[Payslip])
+async def list_payslips(current_user: User = Depends(get_current_user)):
+    """Get all payslips - admin can see all, employees see only their own"""
+    if current_user.role == "admin":
+        payslips = await db.payslips.find({}, {"_id": 0}).to_list(1000)
+    else:
+        # Employee can only view their own payslips
+        employee = await db.employees.find_one({"user_id": current_user.id}, {"_id": 0})
+        # If not found by user_id, try to find by email and link it
+        if not employee:
+            employee = await db.employees.find_one({"email": current_user.email}, {"_id": 0})
+            if employee:
+                # Link the employee record to the user
+                await db.employees.update_one(
+                    {"id": employee["id"]},
+                    {"$set": {"user_id": current_user.id}}
+                )
+        
+        if not employee:
+            return []  # No employee profile found
+        
+        payslips = await db.payslips.find({"employee_id": employee["id"]}, {"_id": 0}).to_list(1000)
+    
+    for ps in payslips:
+        if isinstance(ps.get("generated_at"), str):
+            ps["generated_at"] = datetime.fromisoformat(ps["generated_at"])
+    return sorted(payslips, key=lambda x: x["month"], reverse=True)
+
 @api_router.get("/payslips/employee/{employee_id}", response_model=List[Payslip])
 async def get_employee_payslips(employee_id: str, current_user: User = Depends(get_current_user)):
     # Employee can only view their own payslips
     if current_user.role == "employee":
+        # Try to find employee by user_id first
         employee = await db.employees.find_one({"user_id": current_user.id}, {"_id": 0})
+        
+        # If not found by user_id, try to find by email and link it
+        if not employee:
+            employee = await db.employees.find_one({"email": current_user.email}, {"_id": 0})
+            if employee:
+                # Link the employee record to the user
+                await db.employees.update_one(
+                    {"id": employee["id"]},
+                    {"$set": {"user_id": current_user.id}}
+                )
+        
         if not employee or employee["id"] != employee_id:
             raise HTTPException(status_code=403, detail="Access denied")
     
@@ -662,25 +838,47 @@ async def get_employee_payslips(employee_id: str, current_user: User = Depends(g
 
 @api_router.get("/payslips/{payslip_id}/download")
 async def download_payslip(payslip_id: str, format_id: Optional[str] = None, current_user: User = Depends(get_current_user)):
+    from fastapi.responses import HTMLResponse
+    
     payslip = await db.payslips.find_one({"id": payslip_id}, {"_id": 0})
     if not payslip:
         raise HTTPException(status_code=404, detail="Payslip not found")
     
     # Employee can only download their own payslips
     if current_user.role == "employee":
+        # Try to find employee by user_id first
         employee = await db.employees.find_one({"user_id": current_user.id}, {"_id": 0})
+        # If not found by user_id, try to find by email and link it
+        if not employee:
+            employee = await db.employees.find_one({"email": current_user.email}, {"_id": 0})
+            if employee:
+                await db.employees.update_one(
+                    {"id": employee["id"]},
+                    {"$set": {"user_id": current_user.id}}
+                )
         if not employee or employee["id"] != payslip["employee_id"]:
             raise HTTPException(status_code=403, detail="Access denied")
     
     # Get employee details
     employee = await db.employees.find_one({"id": payslip["employee_id"]}, {"_id": 0})
     
-    # Get print format
+    # Get print format - priority: format_id > payroll structure format > default format
+    print_format = None
     if format_id:
         print_format = await db.print_formats.find_one({"id": format_id}, {"_id": 0})
     else:
-        # Get default format
-        print_format = await db.print_formats.find_one({"is_default": True}, {"_id": 0})
+        # Try to get format from payroll structure
+        payroll = await db.payroll.find_one({"employee_id": payslip["employee_id"]}, {"_id": 0})
+        if payroll:
+            structure = await db.payroll_structures.find_one({"id": payroll["payroll_structure_id"]}, {"_id": 0})
+            if structure and structure.get("print_format_id"):
+                print_format = await db.print_formats.find_one({"id": structure["print_format_id"]}, {"_id": 0})
+        
+        # If still no format, get default
+        if not print_format:
+            print_format = await db.print_formats.find_one({"is_default": True}, {"_id": 0})
+    
+    html_content = ""
     
     if print_format:
         # Use custom template
@@ -710,20 +908,11 @@ async def download_payslip(payslip_id: str, format_id: Optional[str] = None, cur
                 generated_date=datetime.fromisoformat(payslip["generated_at"]).strftime("%B %d, %Y") if isinstance(payslip["generated_at"], str) else payslip["generated_at"].strftime("%B %d, %Y")
             )
             
-            pdf_buffer = io.BytesIO()
-            HTML(string=html_content).write_pdf(pdf_buffer)
-            pdf_buffer.seek(0)
-            
-            return StreamingResponse(
-                pdf_buffer,
-                media_type="application/pdf",
-                headers={"Content-Disposition": f"attachment; filename=payslip_{payslip['month']}_{employee['name'].replace(' ', '_')}.pdf"}
-            )
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Template rendering error: {str(e)}")
     else:
         # Fallback to simple default format
-        default_html = f"""
+        html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -739,6 +928,9 @@ async def download_payslip(payslip_id: str, format_id: Optional[str] = None, cur
                 .salary-table th {{ background: #333; color: white; padding: 12px; text-align: left; }}
                 .salary-table td {{ padding: 12px; border-bottom: 1px solid #ddd; }}
                 .total-row {{ font-weight: bold; background: #f5f5f5; }}
+                @media print {{
+                    body {{ margin: 0; padding: 20px; }}
+                }}
             </style>
         </head>
         <body>
@@ -766,38 +958,31 @@ async def download_payslip(payslip_id: str, format_id: Optional[str] = None, cur
             <table class="salary-table">
                 <tr>
                     <th>Description</th>
-                    <th style="text-align: right;">Amount</th>
+                    <th style="text-align: right;">Amount (₹)</th>
                 </tr>
                 <tr>
                     <td>Basic Salary</td>
-                    <td style="text-align: right;">${payslip["basic_salary"]:.2f}</td>
+                    <td style="text-align: right;">₹{payslip["basic_salary"]:.2f}</td>
                 </tr>
                 <tr>
                     <td>Allowances</td>
-                    <td style="text-align: right;">${payslip["allowances"]:.2f}</td>
+                    <td style="text-align: right;">₹{payslip["allowances"]:.2f}</td>
                 </tr>
                 <tr>
                     <td>Deductions</td>
-                    <td style="text-align: right;">-${payslip["deductions"]:.2f}</td>
+                    <td style="text-align: right;">-₹{payslip["deductions"]:.2f}</td>
                 </tr>
                 <tr class="total-row">
                     <td>Net Pay</td>
-                    <td style="text-align: right;">${payslip["net_pay"]:.2f}</td>
+                    <td style="text-align: right;">₹{payslip["net_pay"]:.2f}</td>
                 </tr>
             </table>
         </body>
         </html>
         """
-        
-        pdf_buffer = io.BytesIO()
-        HTML(string=default_html).write_pdf(pdf_buffer)
-        pdf_buffer.seek(0)
-        
-        return StreamingResponse(
-            pdf_buffer,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=payslip_{payslip['month']}_{employee['name'].replace(' ', '_')}.pdf"}
-        )
+    
+    # Return HTML response (browser can print to PDF)
+    return HTMLResponse(content=html_content)
 
 # ============= LEAVE POLICY ROUTES =============
 
@@ -823,8 +1008,53 @@ async def list_leave_policies(current_user: User = Depends(get_current_user)):
             policy["leave_types"] = [LeaveType(**lt) if isinstance(lt, dict) else lt for lt in policy["leave_types"]]
     return policies
 
+@api_router.put("/leave-policies/{policy_id}", response_model=LeavePolicy)
+async def update_leave_policy(
+    policy_id: str,
+    policy_data: LeavePolicyCreate,
+    admin: User = Depends(get_admin_user)
+):
+    # Check if policy exists
+    existing = await db.leave_policies.find_one({"id": policy_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Leave policy not found")
+    
+    # Update the policy
+    policy_dict = policy_data.model_dump()
+    # Convert leave_types list of LeaveType objects to dicts
+    policy_dict["leave_types"] = [lt.model_dump() if hasattr(lt, 'model_dump') else lt for lt in policy_dict["leave_types"]]
+    
+    await db.leave_policies.update_one(
+        {"id": policy_id},
+        {"$set": policy_dict}
+    )
+    
+    # Return updated policy
+    updated = await db.leave_policies.find_one({"id": policy_id}, {"_id": 0})
+    if isinstance(updated.get("created_at"), str):
+        updated["created_at"] = datetime.fromisoformat(updated["created_at"])
+    if "leave_types" in updated:
+        updated["leave_types"] = [LeaveType(**lt) if isinstance(lt, dict) else lt for lt in updated["leave_types"]]
+    return LeavePolicy(**updated)
+
 @api_router.delete("/leave-policies/{policy_id}")
 async def delete_leave_policy(policy_id: str, admin: User = Depends(get_admin_user)):
+    # Check if policy exists
+    existing = await db.leave_policies.find_one({"id": policy_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Leave policy not found")
+    
+    # Check if any employee is assigned to this policy
+    assigned_employee = await db.employee_policy_assignments.find_one(
+        {"leave_policy_id": policy_id}
+    )
+    
+    if assigned_employee:
+        raise HTTPException(
+            status_code=400,
+            detail="This leave policy is assigned to employees and cannot be deleted."
+        )
+    
     result = await db.leave_policies.delete_one({"id": policy_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Leave policy not found")
@@ -867,6 +1097,38 @@ async def assign_policy_to_employee(assignment_data: EmployeePolicyAssignmentCre
     await db.employee_policy_assignments.insert_one(assignment_dict)
     return assignment
 
+@api_router.get("/employee-policy-assignments/me")
+async def get_my_policy_assignment(current_user: User = Depends(get_current_user)):
+    """Get the current user's assigned leave policy"""
+    if current_user.role != "employee":
+        raise HTTPException(status_code=403, detail="Only employees can access their own policy")
+    
+    # Get employee ID from user
+    employee = await db.employees.find_one({"user_id": current_user.id}, {"_id": 0})
+    if not employee:
+        return None
+    
+    assignment = await db.employee_policy_assignments.find_one({"employee_id": employee["id"]}, {"_id": 0})
+    if not assignment:
+        return None
+    
+    if isinstance(assignment.get("created_at"), str):
+        assignment["created_at"] = datetime.fromisoformat(assignment["created_at"])
+    
+    # Get the full policy details
+    policy = await db.leave_policies.find_one({"id": assignment["leave_policy_id"]}, {"_id": 0})
+    if policy:
+        if isinstance(policy.get("created_at"), str):
+            policy["created_at"] = datetime.fromisoformat(policy["created_at"])
+        if "leave_types" in policy:
+            policy["leave_types"] = [LeaveType(**lt) if isinstance(lt, dict) else lt for lt in policy["leave_types"]]
+        return {
+            **assignment,
+            "policy": policy
+        }
+    
+    return assignment
+
 @api_router.get("/employee-policy-assignments/employee/{employee_id}")
 async def get_employee_policy_assignment(employee_id: str, current_user: User = Depends(get_current_user)):
     assignment = await db.employee_policy_assignments.find_one({"employee_id": employee_id}, {"_id": 0})
@@ -897,10 +1159,21 @@ async def create_leave_request(request_data: LeaveRequestCreate, current_user: U
     if current_user.role != "employee":
         raise HTTPException(status_code=403, detail="Only employees can apply for leave")
     
-    # Get employee ID from user
+    # Try to find employee by user_id first
     employee = await db.employees.find_one({"user_id": current_user.id}, {"_id": 0})
+    
+    # If not found by user_id, try to find by email and link it
     if not employee:
-        raise HTTPException(status_code=404, detail="Employee profile not found")
+        employee = await db.employees.find_one({"email": current_user.email}, {"_id": 0})
+        if employee:
+            # Link the employee record to the user
+            await db.employees.update_one(
+                {"id": employee["id"]},
+                {"$set": {"user_id": current_user.id}}
+            )
+    
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee profile not found. Please contact your administrator.")
     
     # Verify employee has this leave type in their assigned policy
     policy_assignment = await db.employee_policy_assignments.find_one({"employee_id": employee["id"]}, {"_id": 0})
@@ -931,9 +1204,21 @@ async def list_leave_requests(current_user: User = Depends(get_current_user)):
     if current_user.role == "admin":
         requests = await db.leave_requests.find({}, {"_id": 0}).to_list(1000)
     else:
+        # Try to find employee by user_id first
         employee = await db.employees.find_one({"user_id": current_user.id}, {"_id": 0})
+        
+        # If not found by user_id, try to find by email and link it
         if not employee:
-            return []
+            employee = await db.employees.find_one({"email": current_user.email}, {"_id": 0})
+            if employee:
+                # Link the employee record to the user
+                await db.employees.update_one(
+                    {"id": employee["id"]},
+                    {"$set": {"user_id": current_user.id}}
+                )
+        
+        if not employee:
+            return []  # No employee profile found - return empty array
         requests = await db.leave_requests.find({"employee_id": employee["id"]}, {"_id": 0}).to_list(1000)
     
     for req in requests:
@@ -960,9 +1245,21 @@ async def get_leave_balance(current_user: User = Depends(get_current_user)):
     if current_user.role != "employee":
         raise HTTPException(status_code=403, detail="Only employees can view leave balance")
     
+    # Try to find employee by user_id first
     employee = await db.employees.find_one({"user_id": current_user.id}, {"_id": 0})
+    
+    # If not found by user_id, try to find by email and link it
     if not employee:
-        raise HTTPException(status_code=404, detail="Employee profile not found")
+        employee = await db.employees.find_one({"email": current_user.email}, {"_id": 0})
+        if employee:
+            # Link the employee record to the user
+            await db.employees.update_one(
+                {"id": employee["id"]},
+                {"$set": {"user_id": current_user.id}}
+            )
+    
+    if not employee:
+        return []  # No employee profile found - return empty array instead of error
     
     # Get employee's assigned policy
     policy_assignment = await db.employee_policy_assignments.find_one({"employee_id": employee["id"]}, {"_id": 0})
@@ -970,30 +1267,49 @@ async def get_leave_balance(current_user: User = Depends(get_current_user)):
         return []  # No policy assigned yet
     
     policy = await db.leave_policies.find_one({"id": policy_assignment["leave_policy_id"]}, {"_id": 0})
-    if not policy or "leave_types" not in policy:
+    if not policy:
+        return []
+    
+    # Ensure leave_types exists and is a list
+    if "leave_types" not in policy or not isinstance(policy["leave_types"], list):
         return []
     
     balances = []
     
     for leave_type in policy["leave_types"]:
+        # Handle both dict and object formats
+        if isinstance(leave_type, dict):
+            leave_type_name = leave_type.get("type")
+            allocated_days = leave_type.get("days")
+        else:
+            # If it's already a LeaveType object
+            leave_type_name = getattr(leave_type, "type", None)
+            allocated_days = getattr(leave_type, "days", None)
+        
+        if not leave_type_name or allocated_days is None:
+            continue  # Skip invalid leave types
+        
         # Calculate used days from approved leave requests for this leave type
         approved_requests = await db.leave_requests.find({
             "employee_id": employee["id"],
-            "leave_type": leave_type["type"],
+            "leave_type": leave_type_name,
             "status": "approved"
         }, {"_id": 0}).to_list(1000)
         
         used_days = 0
         for req in approved_requests:
-            start = datetime.strptime(req["start_date"], "%Y-%m-%d")
-            end = datetime.strptime(req["end_date"], "%Y-%m-%d")
-            used_days += (end - start).days + 1
+            try:
+                start = datetime.strptime(req["start_date"], "%Y-%m-%d")
+                end = datetime.strptime(req["end_date"], "%Y-%m-%d")
+                used_days += (end - start).days + 1
+            except (ValueError, KeyError):
+                continue  # Skip invalid date formats
         
         balances.append(LeaveBalance(
-            leave_type=leave_type["type"],
-            allocated_days=leave_type["days"],
+            leave_type=leave_type_name,
+            allocated_days=allocated_days,
             used_days=used_days,
-            remaining_days=leave_type["days"] - used_days
+            remaining_days=allocated_days - used_days
         ))
     
     return balances

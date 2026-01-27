@@ -22,18 +22,26 @@ export default function MyPayslips() {
 
   const fetchEmployeeAndPayslips = async () => {
     try {
-      // Get current user's employee profile
-      const user = JSON.parse(localStorage.getItem('user'));
-      const employeesRes = await api.get('/employees');
-      const employee = employeesRes.data.find((e) => e.email === user.email);
+      // Use the /payslips endpoint which automatically handles employee lookup
+      const payslipsRes = await api.get('/payslips');
+      setPayslips(payslipsRes.data || []);
       
-      if (employee) {
-        setEmployeeId(employee.id);
-        const payslipsRes = await api.get(`/payslips/employee/${employee.id}`);
-        setPayslips(payslipsRes.data);
+      // Also get employee ID for reference if needed
+      try {
+        const employeesRes = await api.get('/employees');
+        const user = JSON.parse(localStorage.getItem('user'));
+        const employee = employeesRes.data.find((e) => e.email === user.email);
+        if (employee) {
+          setEmployeeId(employee.id);
+        }
+      } catch (err) {
+        // Ignore employee lookup errors
       }
     } catch (error) {
-      toast.error('Failed to fetch payslips');
+      const errorMessage = error.response?.data?.detail || 'Failed to fetch payslips';
+      toast.error(errorMessage);
+      console.error('Error fetching payslips:', error);
+      setPayslips([]);
     } finally {
       setLoading(false);
     }
@@ -42,18 +50,28 @@ export default function MyPayslips() {
   const handleDownload = async (payslipId, month) => {
     try {
       const response = await api.get(`/payslips/${payslipId}/download`, {
-        responseType: 'blob',
+        responseType: 'text',
       });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `payslip_${month}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      toast.success('Payslip downloaded!');
+      
+      // Open in new window and trigger print dialog
+      const newWindow = window.open('', '_blank');
+      if (newWindow) {
+        newWindow.document.write(response.data);
+        newWindow.document.close();
+        
+        // Wait for content to load, then trigger print
+        setTimeout(() => {
+          newWindow.print();
+        }, 500);
+        
+        toast.success('Payslip opened for printing/download');
+      } else {
+        toast.error('Please allow popups to download payslip');
+      }
     } catch (error) {
-      toast.error('Failed to download payslip');
+      const errorMessage = error.response?.data?.detail || 'Failed to download payslip';
+      toast.error(errorMessage);
+      console.error('Download error:', error);
     }
   };
 
@@ -106,26 +124,26 @@ export default function MyPayslips() {
                   <div className="flex justify-between text-sm">
                     <span className="text-zinc-600">Basic Salary</span>
                     <span className="font-medium text-zinc-900">
-                      ${payslip.basic_salary.toFixed(2)}
+                      ₹{payslip.basic_salary.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-zinc-600">Allowances</span>
                     <span className="font-medium text-green-600">
-                      +${payslip.allowances.toFixed(2)}
+                      +₹{payslip.allowances.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-zinc-600">Deductions</span>
                     <span className="font-medium text-red-600">
-                      -${payslip.deductions.toFixed(2)}
+                      -₹{payslip.deductions.toFixed(2)}
                     </span>
                   </div>
                   <div className="pt-3 border-t border-zinc-200">
                     <div className="flex justify-between">
                       <span className="font-semibold text-zinc-900">Net Pay</span>
                       <span className="font-semibold text-lg text-zinc-900">
-                        ${payslip.net_pay.toFixed(2)}
+                        ₹{payslip.net_pay.toFixed(2)}
                       </span>
                     </div>
                   </div>

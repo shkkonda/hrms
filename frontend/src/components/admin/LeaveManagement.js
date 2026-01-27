@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Check, X, Clock, Trash2 } from 'lucide-react';
+import { Plus, Check, X, Clock, Trash2, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../lib/api';
 
@@ -36,7 +36,9 @@ export default function LeaveManagement() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [policyDialog, setPolicyDialog] = useState(false);
+  const [editDialog, setEditDialog] = useState(false);
   const [assignDialog, setAssignDialog] = useState(false);
+  const [editingPolicy, setEditingPolicy] = useState(null);
   
   const [policyForm, setPolicyForm] = useState({
     name: '',
@@ -61,10 +63,21 @@ export default function LeaveManagement() {
         api.get('/employees'),
       ]);
       setPolicies(policiesRes.data);
-      setRequests(requestsRes.data);
+      // Sort requests: pending first, then by date
+      const sortedRequests = requestsRes.data.sort((a, b) => {
+        if (a.status === 'pending' && b.status !== 'pending') return -1;
+        if (a.status !== 'pending' && b.status === 'pending') return 1;
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
+      setRequests(sortedRequests);
       setEmployees(employeesRes.data);
     } catch (error) {
-      toast.error('Failed to fetch data');
+      const errorMessage = error.response?.data?.detail || 'Failed to fetch data';
+      toast.error(errorMessage);
+      // Set empty arrays on error to prevent UI issues
+      setPolicies([]);
+      setRequests([]);
+      setEmployees([]);
     } finally {
       setLoading(false);
     }
@@ -109,6 +122,41 @@ export default function LeaveManagement() {
     }
   };
 
+  const handleEditPolicy = (policy) => {
+    setEditingPolicy(policy);
+    setPolicyForm({
+      name: policy.name,
+      description: policy.description || '',
+      leave_types: policy.leave_types.map(lt => ({
+        type: lt.type,
+        days: lt.days.toString()
+      }))
+    });
+    setEditDialog(true);
+  };
+
+  const handleUpdatePolicy = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        name: policyForm.name,
+        description: policyForm.description,
+        leave_types: policyForm.leave_types.map(lt => ({
+          type: lt.type,
+          days: parseInt(lt.days)
+        }))
+      };
+      await api.put(`/leave-policies/${editingPolicy.id}`, payload);
+      toast.success('Leave policy updated!');
+      setPolicyForm({ name: '', description: '', leave_types: [{ type: '', days: '' }] });
+      setEditingPolicy(null);
+      fetchData();
+      setEditDialog(false);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update policy');
+    }
+  };
+
   const handleAssignPolicy = async (e) => {
     e.preventDefault();
     try {
@@ -125,9 +173,10 @@ export default function LeaveManagement() {
     try {
       await api.patch(`/leave-requests/${requestId}`, { status });
       toast.success(`Leave request ${status}!`);
-      fetchData();
+      fetchData(); // Refresh data to show updated status
     } catch (error) {
-      toast.error('Failed to update request');
+      const errorMessage = error.response?.data?.detail || 'Failed to update request';
+      toast.error(errorMessage);
     }
   };
 
@@ -138,7 +187,7 @@ export default function LeaveManagement() {
       toast.success('Policy deleted!');
       fetchData();
     } catch (error) {
-      toast.error('Failed to delete policy');
+      toast.error(error.response?.data?.detail || 'Failed to delete policy');
     }
   };
 
@@ -186,7 +235,14 @@ export default function LeaveManagement() {
         <TabsList className="grid w-full max-w-2xl grid-cols-3">
           <TabsTrigger value="policies">Leave Policies</TabsTrigger>
           <TabsTrigger value="assign">Assign Policy</TabsTrigger>
-          <TabsTrigger value="requests">Leave Requests</TabsTrigger>
+          <TabsTrigger value="requests">
+            Leave Requests
+            {requests.filter(r => r.status === 'pending').length > 0 && (
+              <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 rounded-full">
+                {requests.filter(r => r.status === 'pending').length}
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {/* Leave Policies Tab */}
@@ -313,15 +369,28 @@ export default function LeaveManagement() {
                           <CardDescription className="mt-1">{policy.description}</CardDescription>
                         )}
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeletePolicy(policy.id)}
-                        className="border-zinc-300 text-red-600 hover:text-red-700"
-                        data-testid="delete-policy-button"
-                      >
-                        Delete
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditPolicy(policy)}
+                          className="border-zinc-300"
+                          data-testid="edit-policy-button"
+                        >
+                          <Edit className="h-3 w-3 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeletePolicy(policy.id)}
+                          className="border-zinc-300 text-red-600 hover:text-red-700"
+                          data-testid="delete-policy-button"
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -342,6 +411,101 @@ export default function LeaveManagement() {
             )}
           </div>
         </TabsContent>
+
+        {/* Edit Policy Dialog */}
+        <Dialog open={editDialog} onOpenChange={setEditDialog}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Leave Policy</DialogTitle>
+              <DialogDescription>
+                Update the leave policy details
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleUpdatePolicy} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit_policy_name">Policy Name</Label>
+                <Input
+                  id="edit_policy_name"
+                  data-testid="edit-policy-name-input"
+                  placeholder="e.g., Standard Employee Policy"
+                  value={policyForm.name}
+                  onChange={(e) =>
+                    setPolicyForm({ ...policyForm, name: e.target.value })
+                  }
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit_description">Description (Optional)</Label>
+                <Textarea
+                  id="edit_description"
+                  data-testid="edit-policy-description-input"
+                  placeholder="Brief description"
+                  value={policyForm.description}
+                  onChange={(e) =>
+                    setPolicyForm({ ...policyForm, description: e.target.value })
+                  }
+                  rows={2}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <Label>Leave Types</Label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={addLeaveType}
+                    data-testid="edit-add-leave-type-button"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Leave Type
+                  </Button>
+                </div>
+
+                {policyForm.leave_types.map((leaveType, index) => (
+                  <div key={index} className="flex gap-2 items-start p-3 border border-zinc-200 rounded-md">
+                    <div className="flex-1 space-y-2">
+                      <Input
+                        placeholder="Leave Type (e.g., Casual Leave)"
+                        value={leaveType.type}
+                        onChange={(e) => updateLeaveType(index, 'type', e.target.value)}
+                        required
+                        data-testid={`edit-leave-type-${index}`}
+                      />
+                    </div>
+                    <div className="w-24 space-y-2">
+                      <Input
+                        type="number"
+                        placeholder="Days"
+                        value={leaveType.days}
+                        onChange={(e) => updateLeaveType(index, 'days', e.target.value)}
+                        required
+                        data-testid={`edit-leave-days-${index}`}
+                      />
+                    </div>
+                    {policyForm.leave_types.length > 1 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => removeLeaveType(index)}
+                        data-testid={`edit-remove-leave-type-${index}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <Button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800" data-testid="update-policy-button">
+                Update Policy
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         {/* Assign Policy Tab */}
         <TabsContent value="assign" className="space-y-4">
@@ -419,6 +583,40 @@ export default function LeaveManagement() {
 
         {/* Leave Requests Tab */}
         <TabsContent value="requests" className="space-y-4">
+          {requests.length > 0 && (
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <Card className="border-zinc-200">
+                <CardContent className="pt-6">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-yellow-600">
+                      {requests.filter(r => r.status === 'pending').length}
+                    </p>
+                    <p className="text-sm text-zinc-600 mt-1">Pending</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-zinc-200">
+                <CardContent className="pt-6">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-green-600">
+                      {requests.filter(r => r.status === 'approved').length}
+                    </p>
+                    <p className="text-sm text-zinc-600 mt-1">Approved</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-zinc-200">
+                <CardContent className="pt-6">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-red-600">
+                      {requests.filter(r => r.status === 'rejected').length}
+                    </p>
+                    <p className="text-sm text-zinc-600 mt-1">Rejected</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
           <div className="grid gap-4">
             {requests.length === 0 ? (
               <Card>

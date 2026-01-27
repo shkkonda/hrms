@@ -52,10 +52,32 @@ export default function LeaveSection() {
         api.get('/leave-requests'),
         api.get('/leave-requests/balance'),
       ]);
-      setRequests(requestsRes.data);
-      setBalances(balancesRes.data);
+      setRequests(requestsRes.data || []);
+      setBalances(balancesRes.data || []);
+      
+      // Show warning if no leave policy is assigned
+      if (!balancesRes.data || balancesRes.data.length === 0) {
+        // Only show warning if we have requests (meaning employee profile exists)
+        // Otherwise, the employee profile might not exist yet
+        if (requestsRes.data && requestsRes.data.length > 0) {
+          toast.warning('No leave policy assigned. Please contact your administrator.');
+        } else {
+          toast.warning('Employee profile not found. Please contact your administrator to set up your profile.');
+        }
+      } else {
+        // Log for debugging
+        console.log('Leave balances fetched:', balancesRes.data);
+      }
     } catch (error) {
-      toast.error('Failed to fetch leave data');
+      const errorMessage = error.response?.data?.detail || 'Failed to fetch leave data';
+      // Don't show error toast if it's just "Employee profile not found" - we handle it above
+      if (!errorMessage.includes('Employee profile not found')) {
+        toast.error(errorMessage);
+      }
+      console.error('Error fetching leave data:', error);
+      // Set empty arrays on error to prevent UI issues
+      setRequests([]);
+      setBalances([]);
     } finally {
       setLoading(false);
     }
@@ -139,11 +161,17 @@ export default function LeaveSection() {
                     <SelectValue placeholder="Select leave type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {balances.map((balance) => (
-                      <SelectItem key={balance.leave_type} value={balance.leave_type}>
-                        {balance.leave_type} ({balance.remaining_days} days available)
+                    {balances.length === 0 ? (
+                      <SelectItem value="no-policy" disabled className="text-zinc-500">
+                        No leave types available. Please contact your administrator.
                       </SelectItem>
-                    ))}
+                    ) : (
+                      balances.map((balance) => (
+                        <SelectItem key={balance.leave_type} value={balance.leave_type}>
+                          {balance.leave_type} ({balance.remaining_days} days available)
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>

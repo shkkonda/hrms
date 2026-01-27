@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Mail, Edit } from 'lucide-react';
+import { Plus, Mail, Edit,Trash} from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../lib/api';
 
@@ -108,6 +108,19 @@ export default function EmployeeManagement() {
       toast.error(error.response?.data?.detail || 'Failed to update employee');
     }
   };
+
+  const handleDelete = async (id) => {
+  if (!confirm("Are you sure you want to delete this employee?")) return;
+
+  try {
+    await api.delete(`/employees/${id}`);
+    toast.success("Employee deleted successfully");
+    fetchData(); // refresh list
+  } catch (error) {
+    toast.error("Failed to delete employee");
+  }
+};
+
 
   const getDepartmentName = (deptId) => {
     const dept = departments.find((d) => d.id === deptId);
@@ -202,14 +215,14 @@ export default function EmployeeManagement() {
                 <Select
                   value={formData.reporting_manager_id}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, reporting_manager_id: value })
+                    setFormData({ ...formData, reporting_manager_id: value==="none"?"":value })
                   }
                 >
                   <SelectTrigger data-testid="reporting-manager-select">
                     <SelectValue placeholder="No Reporting Manager" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No Reporting Manager</SelectItem>
+                    <SelectItem value="none">No Reporting Manager</SelectItem>
                     {employees.map((emp) => (
                       <SelectItem key={emp.id} value={emp.id}>
                         {emp.name} - {emp.employee_id}
@@ -298,14 +311,14 @@ export default function EmployeeManagement() {
               <Select
                 value={formData.reporting_manager_id}
                 onValueChange={(value) =>
-                  setFormData({ ...formData, reporting_manager_id: value })
+                  setFormData({ ...formData, reporting_manager_id: value==="none"?"":value})
                 }
               >
                 <SelectTrigger data-testid="edit-reporting-manager-select">
                   <SelectValue placeholder="No Reporting Manager" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No Reporting Manager</SelectItem>
+                  <SelectItem value="none">No Reporting Manager</SelectItem>
                   {employees.filter(emp => emp.id !== editingEmployee?.id).map((emp) => (
                     <SelectItem key={emp.id} value={emp.id}>
                       {emp.name} - {emp.employee_id}
@@ -356,6 +369,14 @@ export default function EmployeeManagement() {
                     >
                       <Edit className="h-3 w-3 mr-1" />
                       Edit
+                    </Button>
+                     <Button
+                    variant="destructive"
+                    size="sm"
+                      onClick={() => handleDelete(employee.id)}
+                      >
+                       <Trash className="h-3 w-3 mr-1" />
+                    Delete
                     </Button>
                   </div>
                 </div>

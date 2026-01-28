@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "https://hrms-1-fmzs.onrender.com";
 const API_URL = `${BACKEND_URL}/api`;
 
 const api = axios.create({

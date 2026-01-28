@@ -1319,13 +1319,14 @@ app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
     allow_origins=[
         "https://hrms-nine-delta.vercel.app"
     ],
+    allow_credentials=False,  # IMPORTANT: must be False for Authorization header
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 logging.basicConfig(

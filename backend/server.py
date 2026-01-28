@@ -1317,15 +1317,18 @@ async def get_leave_balance(current_user: User = Depends(get_current_user)):
 # Include router
 app.include_router(api_router)
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://hrms-nine-delta.vercel.app"
     ],
-    allow_credentials=False,  # IMPORTANT: must be False for Authorization header
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 

@@ -26,13 +26,6 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Setup logging early
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
 # Security
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
@@ -270,11 +263,6 @@ async def get_admin_user(current_user: User = Depends(get_current_user)):
 
 # ============= AUTH ROUTES =============
 
-@api_router.get("/health")
-async def health_check():
-    """Health check endpoint to test CORS"""
-    return {"status": "ok", "message": "Backend is running"}
-
 @api_router.post("/auth/register", response_model=Token)
 async def register(user_data: UserCreate):
     # Check if user exists
@@ -309,26 +297,16 @@ async def register(user_data: UserCreate):
 
 @api_router.post("/auth/login", response_model=Token)
 async def login(credentials: UserLogin):
-    try:
-        user_doc = await db.users.find_one({"email": credentials.email}, {"_id": 0})
-        if not user_doc:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-        
-        if "hashed_password" not in user_doc:
-            logger.error(f"User {credentials.email} found but has no hashed_password field")
-            raise HTTPException(status_code=500, detail="User data corrupted")
-        
-        if not verify_password(credentials.password, user_doc["hashed_password"]):
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-        
-        user = User(**user_doc)
-        access_token = create_access_token(data={"sub": user.id, "role": user.role})
-        return Token(access_token=access_token, token_type="bearer", user=user)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Login error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    user_doc = await db.users.find_one({"email": credentials.email}, {"_id": 0})
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    if not verify_password(credentials.password, user_doc["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    user = User(**user_doc)
+    access_token = create_access_token(data={"sub": user.id, "role": user.role})
+    return Token(access_token=access_token, token_type="bearer", user=user)
 
 @api_router.get("/auth/me", response_model=User)
 async def get_me(current_user: User = Depends(get_current_user)):
@@ -1336,37 +1314,22 @@ async def get_leave_balance(current_user: User = Depends(get_current_user)):
     
     return balances
 
-# CORS configuration - must be before including router
-# Default origins include localhost for development
-default_origins = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "https://hrms-eight-rose.vercel.app"
-]
-
-cors_origins = os.environ.get('CORS_ORIGINS', '')
-if cors_origins:
-    # If CORS_ORIGINS is set, use it and add localhost for development
-    allowed_origins = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
-    # Always include localhost for development
-    for origin in default_origins:
-        if origin not in allowed_origins and ('localhost' in origin or '127.0.0.1' in origin):
-            allowed_origins.append(origin)
-else:
-    # If not set, use defaults (includes localhost)
-    allowed_origins = default_origins
+# Include router
+app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=allowed_origins,
+    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include router
-app.include_router(api_router)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

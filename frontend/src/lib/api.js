@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 // Use environment variable or fallback to production backend URL
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'https://hrms-aqi6.onrender.com';
+// Remove trailing slash if present to avoid double slashes
+const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || 'https://hrms-aqi6.onrender.com').replace(/\/$/, '');
 const API_URL = `${BACKEND_URL}/api`;
 
 const api = axios.create({

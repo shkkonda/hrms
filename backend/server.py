@@ -129,6 +129,7 @@ class PayrollStructure(BaseModel):
 class SalaryType(BaseModel):
     type: str
     amount: float
+    category: Literal["earnings", "deductions"] = "earnings"
 class PayrollStructureCreate(BaseModel):
     name: str
     salary_types: List[SalaryType]
@@ -429,6 +430,9 @@ async def delete_employee(employee_id: str, admin: User = Depends(get_admin_user
     # This ensures the employee_count in payroll structures is updated correctly
     await db.payroll.delete_one({"employee_id": employee_id})
     
+    # Delete all associated payslips
+    await db.payslips.delete_many({"employee_id": employee_id})
+    
     return {"message": "Employee deleted successfully"}
 
 @api_router.post("/employees", response_model=Employee)
@@ -539,11 +543,15 @@ async def update_payroll_structure(
     data: PayrollStructureCreate,
     admin: User = Depends(get_admin_user)
 ):
-    net_salary = sum(item.amount for item in data.salary_types)
+    # Calculate net salary: earnings - deductions
+    # Handle backward compatibility: if category is not specified, default to "earnings"
+    earnings = sum(item.amount for item in data.salary_types if getattr(item, 'category', 'earnings') == "earnings")
+    deductions = sum(item.amount for item in data.salary_types if getattr(item, 'category', 'earnings') == "deductions")
+    net_salary = earnings - deductions
     
     update_data = {
         "name": data.name,
-        "salary_types": [item.dict() for item in data.salary_types],
+        "salary_types": [item.model_dump() for item in data.salary_types],
         "net_salary": net_salary,
     }
     
@@ -565,12 +573,16 @@ async def create_payroll_structure(
     structure_data: PayrollStructureCreate,
     admin: User = Depends(get_admin_user)
 ):
-    total = sum(item.amount for item in structure_data.salary_types)
+    # Calculate net salary: earnings - deductions
+    # Handle backward compatibility: if category is not specified, default to "earnings"
+    earnings = sum(item.amount for item in structure_data.salary_types if getattr(item, 'category', 'earnings') == "earnings")
+    deductions = sum(item.amount for item in structure_data.salary_types if getattr(item, 'category', 'earnings') == "deductions")
+    net_salary = earnings - deductions
 
     structure = PayrollStructure(
         name=structure_data.name,
         salary_types=structure_data.salary_types,
-        net_salary=total,
+        net_salary=net_salary,
         print_format_id=structure_data.print_format_id
     )
 
@@ -806,26 +818,36 @@ async def generate_payslip(payslip_data: PayslipCreate, admin: User = Depends(ge
         if isinstance(salary_type, dict):
             type_name = salary_type.get("type", "").lower()
             amount = float(salary_type.get("amount", 0))
+            category = salary_type.get("category", "earnings")  # Default to earnings for backward compatibility
         else:
             type_name = getattr(salary_type, "type", "").lower()
             amount = float(getattr(salary_type, "amount", 0))
+            category = getattr(salary_type, "category", "earnings")  # Default to earnings for backward compatibility
         
-        # Categorize salary types
-        if "basic" in type_name:
-            basic_salary += amount
-        elif any(keyword in type_name for keyword in ["deduction", "tax", "pf", "esi", "loan"]):
+        # Use category field if available, otherwise use keyword-based categorization
+        if category == "deductions":
             deductions += abs(amount)  # Ensure deductions are positive
-        else:
-            # Everything else is an allowance
-            allowances += amount
+        else:  # category == "earnings" or default
+            # Categorize earnings: basic vs allowances
+            if "basic" in type_name:
+                basic_salary += amount
+            else:
+                # Everything else is an allowance
+                allowances += amount
     
-    # If no basic salary found, use the first salary type as basic
+    # If no basic salary found, use the first earning as basic
     if basic_salary == 0 and salary_types:
-        first_type = salary_types[0]
-        if isinstance(first_type, dict):
-            basic_salary = float(first_type.get("amount", 0))
-        else:
-            basic_salary = float(getattr(first_type, "amount", 0))
+        for salary_type in salary_types:
+            if isinstance(salary_type, dict):
+                category = salary_type.get("category", "earnings")
+                amount = float(salary_type.get("amount", 0))
+            else:
+                category = getattr(salary_type, "category", "earnings")
+                amount = float(getattr(salary_type, "amount", 0))
+            
+            if category == "earnings":
+                basic_salary = amount
+                break
     
     # Calculate net pay
     net_pay = basic_salary + allowances - deductions

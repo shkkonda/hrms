@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DollarSign, FileText, Plus, Download } from 'lucide-react';
+import { DollarSign, FileText, Plus, Download, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../lib/api';
 
@@ -45,9 +45,18 @@ export default function PayrollManagement() {
 
   const openEditDialog = (structure) => {
   setEditStructure(structure);
+  // Separate earnings and deductions from salary_types
+  const earnings = (structure.salary_types || []).filter(
+    item => (item.category || 'earnings') === 'earnings'
+  ).map(item => ({ type: item.type, amount: item.amount.toString() }));
+  const deductions = (structure.salary_types || []).filter(
+    item => (item.category || 'earnings') === 'deductions'
+  ).map(item => ({ type: item.type, amount: item.amount.toString() }));
+  
   setStructureForm({
-   name: structure.name,
-    salary_types: structure.salary_types || [],
+    name: structure.name,
+    earnings: earnings.length > 0 ? earnings : [{ type: '', amount: '' }],
+    deductions: deductions.length > 0 ? deductions : [{ type: '', amount: '' }],
     print_format_id: structure.print_format_id || 'none'
   });
   setEditDialog(true);
@@ -55,26 +64,56 @@ export default function PayrollManagement() {
 
  const [structureForm, setStructureForm] = useState({
   name: '',
-  salary_types: [{ type: '', amount: '' }],
-  net_salary: '',
+  earnings: [{ type: '', amount: '' }],
+  deductions: [{ type: '', amount: '' }],
   print_format_id: ''
 });
-const addSalaryType = () => {
+
+// Calculate net salary: earnings - deductions
+const calculateNetSalary = () => {
+  const totalEarnings = structureForm.earnings.reduce((sum, item) => {
+    return sum + (parseFloat(item.amount) || 0);
+  }, 0);
+  const totalDeductions = structureForm.deductions.reduce((sum, item) => {
+    return sum + (parseFloat(item.amount) || 0);
+  }, 0);
+  return totalEarnings - totalDeductions;
+};
+
+const addEarning = () => {
   setStructureForm(prev => ({
     ...prev,
-    salary_types: [...(prev.salary_types || []), { type: '', amount: '' }]
+    earnings: [...(prev.earnings || []), { type: '', amount: '' }]
   }));
 };
 
+const addDeduction = () => {
+  setStructureForm(prev => ({
+    ...prev,
+    deductions: [...(prev.deductions || []), { type: '', amount: '' }]
+  }));
+};
 
-const updateSalaryType = (index, field, value) => {
-  const updated = [...structureForm.salary_types];
+const removeEarning = (index) => {
+  const newEarnings = structureForm.earnings.filter((_, i) => i !== index);
+  setStructureForm({ ...structureForm, earnings: newEarnings });
+};
+
+const removeDeduction = (index) => {
+  const newDeductions = structureForm.deductions.filter((_, i) => i !== index);
+  setStructureForm({ ...structureForm, deductions: newDeductions });
+};
+
+const updateEarning = (index, field, value) => {
+  const updated = [...structureForm.earnings];
   updated[index][field] = value;
+  setStructureForm({ ...structureForm, earnings: updated });
+};
 
-  setStructureForm({
-    ...structureForm,
-    salary_types: updated
-  });
+const updateDeduction = (index, field, value) => {
+  const updated = [...structureForm.deductions];
+  updated[index][field] = value;
+  setStructureForm({ ...structureForm, deductions: updated });
 };
 
   
@@ -128,12 +167,34 @@ const updateSalaryType = (index, field, value) => {
   
   setSubmitting(true);
   try {
+    // Filter out empty entries and combine earnings and deductions with category
+    const earnings = structureForm.earnings
+      .filter(item => item.type.trim() && item.amount)
+      .map(item => ({
+        type: item.type.trim(),
+        amount: Number(item.amount),
+        category: 'earnings'
+      }));
+    
+    const deductions = structureForm.deductions
+      .filter(item => item.type.trim() && item.amount)
+      .map(item => ({
+        type: item.type.trim(),
+        amount: Number(item.amount),
+        category: 'deductions'
+      }));
+    
+    if (earnings.length === 0 && deductions.length === 0) {
+      toast.error('Please add at least one earning or deduction');
+      setSubmitting(false);
+      return;
+    }
+    
+    const salaryTypes = [...earnings, ...deductions];
+    
     await api.put(`/payroll-structures/${editStructure.id}`, {
       name: trimmedName,
-      salary_types: structureForm.salary_types.map(item => ({
-        type: item.type,
-        amount: Number(item.amount)
-      })),
+      salary_types: salaryTypes,
       print_format_id: structureForm.print_format_id && structureForm.print_format_id !== 'none' ? structureForm.print_format_id : null
     });
 
@@ -177,17 +238,44 @@ alert("You cannot payroll containing employees")
   
   setSubmitting(true);
   try {
+    // Filter out empty entries and combine earnings and deductions with category
+    const earnings = structureForm.earnings
+      .filter(item => item.type.trim() && item.amount)
+      .map(item => ({
+        type: item.type.trim(),
+        amount: Number(item.amount),
+        category: 'earnings'
+      }));
+    
+    const deductions = structureForm.deductions
+      .filter(item => item.type.trim() && item.amount)
+      .map(item => ({
+        type: item.type.trim(),
+        amount: Number(item.amount),
+        category: 'deductions'
+      }));
+    
+    if (earnings.length === 0 && deductions.length === 0) {
+      toast.error('Please add at least one earning or deduction');
+      setSubmitting(false);
+      return;
+    }
+    
+    const salaryTypes = [...earnings, ...deductions];
+    
     await api.post('/payroll-structures', {
       name: trimmedName,
-      salary_types: structureForm.salary_types.map(item => ({
-        type: item.type,
-        amount: Number(item.amount)
-      })),
+      salary_types: salaryTypes,
       print_format_id: structureForm.print_format_id && structureForm.print_format_id !== 'none' ? structureForm.print_format_id : null
     });
 
     toast.success('Payroll structure created!');
-    setStructureForm({ name: '', salary_types: [{ type: '', amount: '' }], print_format_id: 'none' });
+    setStructureForm({ 
+      name: '', 
+      earnings: [{ type: '', amount: '' }], 
+      deductions: [{ type: '', amount: '' }], 
+      print_format_id: 'none' 
+    });
     fetchData();
     setStructureDialog(false);
   } catch (error) {
@@ -278,7 +366,8 @@ alert("You cannot payroll containing employees")
   if (open) {
     setStructureForm({
       name: '',
-      salary_types: [{ type: '', amount: '' }],
+      earnings: [{ type: '', amount: '' }],
+      deductions: [{ type: '', amount: '' }],
       print_format_id: 'none'
     });
   }
@@ -334,30 +423,106 @@ alert("You cannot payroll containing employees")
     </p>
   </div>
 
-  <div className="flex justify-between items-center">
-    <Label>Salary Types</Label>
-    <Button type="button" variant="outline" onClick={addSalaryType}>
-      + Add Salary Type
-    </Button>
+  {/* Earnings Section */}
+  <div className="space-y-3">
+    <div className="flex justify-between items-center">
+      <Label className="flex items-center gap-2">
+        <TrendingUp className="h-4 w-4 text-green-600" />
+        Salary Type (Earnings)
+      </Label>
+      <Button type="button" variant="outline" size="sm" onClick={addEarning}>
+        <Plus className="h-3 w-3 mr-1" />
+        Add Salary Type (Earnings)
+      </Button>
+    </div>
+
+    {(structureForm.earnings || []).map((item, index) => (
+      <div key={`earning-${index}`} className="flex gap-2 items-center">
+        <Input
+          placeholder="Earning Type (e.g. Basic, HRA, Allowance)"
+          value={item.type}
+          onChange={(e) => updateEarning(index, "type", e.target.value)}
+          required
+          className="flex-1"
+        />
+        <Input
+          type="number"
+          placeholder="Amount"
+          value={item.amount}
+          onChange={(e) => updateEarning(index, "amount", e.target.value)}
+          required
+          className="w-32"
+        />
+        {structureForm.earnings.length > 1 && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => removeEarning(index)}
+          >
+            <Trash2 className="h-4 w-4 text-red-600" />
+          </Button>
+        )}
+      </div>
+    ))}
   </div>
 
-  {(structureForm.salary_types || []).map((item, index) => (
-    <div key={index} className="flex gap-2">
-      <Input
-        placeholder="Salary Type (e.g. Basic, HRA)"
-        value={item.type}
-        onChange={(e) => updateSalaryType(index, "type", e.target.value)}
-        required
-      />
-      <Input
-        type="number"
-        placeholder="Amount"
-        value={item.amount}
-        onChange={(e) => updateSalaryType(index, "amount", e.target.value)}
-        required
-      />
+  {/* Deductions Section */}
+  <div className="space-y-3">
+    <div className="flex justify-between items-center">
+      <Label className="flex items-center gap-2">
+        <TrendingDown className="h-4 w-4 text-red-600" />
+        Salary Type (Deductions)
+      </Label>
+      <Button type="button" variant="outline" size="sm" onClick={addDeduction}>
+        <Plus className="h-3 w-3 mr-1" />
+        Add Salary Type (Deductions)
+      </Button>
     </div>
-  ))}
+
+    {(structureForm.deductions || []).map((item, index) => (
+      <div key={`deduction-${index}`} className="flex gap-2 items-center">
+        <Input
+          placeholder="Deduction Type (e.g. Tax, PF, Insurance)"
+          value={item.type}
+          onChange={(e) => updateDeduction(index, "type", e.target.value)}
+          required
+          className="flex-1"
+        />
+        <Input
+          type="number"
+          placeholder="Amount"
+          value={item.amount}
+          onChange={(e) => updateDeduction(index, "amount", e.target.value)}
+          required
+          className="w-32"
+        />
+        {structureForm.deductions.length > 1 && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => removeDeduction(index)}
+          >
+            <Trash2 className="h-4 w-4 text-red-600" />
+          </Button>
+        )}
+      </div>
+    ))}
+  </div>
+
+  {/* Net Salary Preview */}
+  <div className="pt-3 border-t border-zinc-200">
+    <div className="flex justify-between items-center">
+      <span className="font-semibold text-zinc-900">Net Salary (Preview)</span>
+      <span className="font-semibold text-lg text-zinc-900">
+        ₹{calculateNetSalary().toFixed(2)}
+      </span>
+    </div>
+    <p className="text-xs text-zinc-500 mt-1">
+      Total Earnings - Total Deductions
+    </p>
+  </div>
 
   <Button type="submit" className="w-full" disabled={submitting}>
     {submitting ? 'Creating...' : 'Create Payroll'}
@@ -408,30 +573,106 @@ alert("You cannot payroll containing employees")
     </p>
   </div>
 
-  <div className="flex justify-between items-center">
-    <Label>Salary Types</Label>
-    <Button type="button" variant="outline" onClick={addSalaryType}>
-      + Add Salary Type
-    </Button>
+  {/* Earnings Section */}
+  <div className="space-y-3">
+    <div className="flex justify-between items-center">
+      <Label className="flex items-center gap-2">
+        <TrendingUp className="h-4 w-4 text-green-600" />
+        Salary Type (Earnings)
+      </Label>
+      <Button type="button" variant="outline" size="sm" onClick={addEarning}>
+        <Plus className="h-3 w-3 mr-1" />
+        Add Salary Type (Earnings)
+      </Button>
+    </div>
+
+    {(structureForm.earnings || []).map((item, index) => (
+      <div key={`earning-${index}`} className="flex gap-2 items-center">
+        <Input
+          placeholder="Earning Type (e.g. Basic, HRA, Allowance)"
+          value={item.type}
+          onChange={(e) => updateEarning(index, "type", e.target.value)}
+          required
+          className="flex-1"
+        />
+        <Input
+          type="number"
+          placeholder="Amount"
+          value={item.amount}
+          onChange={(e) => updateEarning(index, "amount", e.target.value)}
+          required
+          className="w-32"
+        />
+        {structureForm.earnings.length > 1 && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => removeEarning(index)}
+          >
+            <Trash2 className="h-4 w-4 text-red-600" />
+          </Button>
+        )}
+      </div>
+    ))}
   </div>
 
-  {(structureForm.salary_types || []).map((item, index) => (
-    <div key={index} className="flex gap-2">
-      <Input
-        placeholder="Salary Type (e.g. Basic, HRA)"
-        value={item.type}
-        onChange={(e) => updateSalaryType(index, "type", e.target.value)}
-        required
-      />
-      <Input
-        type="number"
-        placeholder="Amount"
-        value={item.amount}
-        onChange={(e) => updateSalaryType(index, "amount", e.target.value)}
-        required
-      />
+  {/* Deductions Section */}
+  <div className="space-y-3">
+    <div className="flex justify-between items-center">
+      <Label className="flex items-center gap-2">
+        <TrendingDown className="h-4 w-4 text-red-600" />
+        Salary Type (Deductions)
+      </Label>
+      <Button type="button" variant="outline" size="sm" onClick={addDeduction}>
+        <Plus className="h-3 w-3 mr-1" />
+        Add Salary Type (Deductions)
+      </Button>
     </div>
-  ))}
+
+    {(structureForm.deductions || []).map((item, index) => (
+      <div key={`deduction-${index}`} className="flex gap-2 items-center">
+        <Input
+          placeholder="Deduction Type (e.g. Tax, PF, Insurance)"
+          value={item.type}
+          onChange={(e) => updateDeduction(index, "type", e.target.value)}
+          required
+          className="flex-1"
+        />
+        <Input
+          type="number"
+          placeholder="Amount"
+          value={item.amount}
+          onChange={(e) => updateDeduction(index, "amount", e.target.value)}
+          required
+          className="w-32"
+        />
+        {structureForm.deductions.length > 1 && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => removeDeduction(index)}
+          >
+            <Trash2 className="h-4 w-4 text-red-600" />
+          </Button>
+        )}
+      </div>
+    ))}
+  </div>
+
+  {/* Net Salary Preview */}
+  <div className="pt-3 border-t border-zinc-200">
+    <div className="flex justify-between items-center">
+      <span className="font-semibold text-zinc-900">Net Salary (Preview)</span>
+      <span className="font-semibold text-lg text-zinc-900">
+        ₹{calculateNetSalary().toFixed(2)}
+      </span>
+    </div>
+    <p className="text-xs text-zinc-500 mt-1">
+      Total Earnings - Total Deductions
+    </p>
+  </div>
          
       <Button type="submit" className="w-full" disabled={submitting}>
         {submitting ? 'Updating...' : 'Update Structure'}
@@ -464,22 +705,47 @@ alert("You cannot payroll containing employees")
     </CardHeader>
 
     <CardContent>
-      <div className="text-sm text-zinc-500 mb-2">
-    Assigned Employees: <span className="font-semibold">{structure.employee_count}</span>
-  </div>
-      <div className="space-y-2">
-        {(structure.salary_types || []).map((item, index) => (
-          <div key={index} className="flex justify-between text-sm">
-            <span className="text-zinc-600">{item.type}</span>
-            <span className="font-medium text-zinc-900">₹{item.amount}</span>
+      <div className="text-sm text-zinc-500 mb-4">
+        Assigned Employees: <span className="font-semibold">{structure.employee_count}</span>
+      </div>
+      <div className="space-y-3">
+        {/* Earnings Section */}
+        {(structure.salary_types || []).filter(item => (item.category || 'earnings') === 'earnings').length > 0 && (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-sm font-medium text-green-700 mb-1">
+              <TrendingUp className="h-3 w-3" />
+              Earnings
+            </div>
+            {(structure.salary_types || []).filter(item => (item.category || 'earnings') === 'earnings').map((item, index) => (
+              <div key={`earning-${index}`} className="flex justify-between text-sm pl-5">
+                <span className="text-zinc-600">{item.type}</span>
+                <span className="font-medium text-green-600">+₹{item.amount}</span>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
+
+        {/* Deductions Section */}
+        {(structure.salary_types || []).filter(item => (item.category || 'earnings') === 'deductions').length > 0 && (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-sm font-medium text-red-700 mb-1">
+              <TrendingDown className="h-3 w-3" />
+              Deductions
+            </div>
+            {(structure.salary_types || []).filter(item => (item.category || 'earnings') === 'deductions').map((item, index) => (
+              <div key={`deduction-${index}`} className="flex justify-between text-sm pl-5">
+                <span className="text-zinc-600">{item.type}</span>
+                <span className="font-medium text-red-600">-₹{item.amount}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="pt-3 border-t border-zinc-200">
           <div className="flex justify-between">
             <span className="font-semibold text-zinc-900">Net Salary</span>
             <span className="font-semibold text-lg text-zinc-900">
-              ₹{structure.net_salary}
+              ₹{structure.net_salary.toFixed(2)}
             </span>
           </div>
         </div>

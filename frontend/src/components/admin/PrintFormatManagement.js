@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +19,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Edit, Trash2, Eye, FileText, CheckCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, FileText, CheckCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../lib/api';
 
@@ -137,23 +137,23 @@ const DEFAULT_TEMPLATE = `<!DOCTYPE html>
     <table class="salary-table">
         <tr>
             <th>Description</th>
-            <th style="text-align: right;">Amount (USD)</th>
+            <th style="text-align: right;">Amount (₹)</th>
         </tr>
         <tr>
             <td>Basic Salary</td>
-            <td style="text-align: right;">\${{ "%.2f"|format(basic_salary) }}</td>
+            <td style="text-align: right;">₹{{ "%.2f"|format(basic_salary) }}</td>
         </tr>
         <tr>
             <td>Allowances</td>
-            <td style="text-align: right;">\${{ "%.2f"|format(allowances) }}</td>
+            <td style="text-align: right;">₹{{ "%.2f"|format(allowances) }}</td>
         </tr>
         <tr>
             <td>Deductions</td>
-            <td style="text-align: right;">-\${{ "%.2f"|format(deductions) }}</td>
+            <td style="text-align: right;">₹{{ "%.2f"|format(deductions) }}</td>
         </tr>
         <tr class="total-row">
             <td>Net Salary</td>
-            <td style="text-align: right;">\${{ "%.2f"|format(net_pay) }}</td>
+            <td style="text-align: right;">₹{{ "%.2f"|format(net_pay) }}</td>
         </tr>
     </table>
 
@@ -164,12 +164,28 @@ const DEFAULT_TEMPLATE = `<!DOCTYPE html>
 </body>
 </html>`;
 
+// Sample data for preview
+const SAMPLE_DATA = {
+  employee_name: "John Doe",
+  employee_id: "EMP12AB34CD",
+  employee_email: "john@company.com",
+  department: "Engineering",
+  month: "January 2025",
+  basic_salary: 50000.00,
+  allowances: 5000.00,
+  deductions: 2000.00,
+  net_pay: 53000.00,
+  generated_date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+};
+
 export default function PrintFormatManagement() {
   const [formats, setFormats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [createDialog, setCreateDialog] = useState(false);
   const [editDialog, setEditDialog] = useState(false);
   const [editingFormat, setEditingFormat] = useState(null);
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewError, setPreviewError] = useState('');
   
   const [formData, setFormData] = useState({
     name: '',
@@ -180,6 +196,47 @@ export default function PrintFormatManagement() {
   useEffect(() => {
     fetchFormats();
   }, []);
+
+  // Generate preview HTML from template
+  const generatePreview = async (htmlTemplate) => {
+    if (!htmlTemplate || !htmlTemplate.trim()) {
+      setPreviewHtml('');
+      setPreviewError('');
+      return;
+    }
+
+    try {
+      // Simple Jinja2 variable replacement for preview
+      let preview = htmlTemplate;
+      Object.entries(SAMPLE_DATA).forEach(([key, value]) => {
+        const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
+        preview = preview.replace(regex, String(value));
+      });
+      
+      // Handle Jinja2 filters (basic support)
+      preview = preview.replace(/\{\{\s*"%.2f"\s*\|\s*format\((\w+)\)\s*\}\}/g, (match, varName) => {
+        const value = SAMPLE_DATA[varName] || 0;
+        return `₹${value.toFixed(2)}`;
+      });
+
+      setPreviewHtml(preview);
+      setPreviewError('');
+    } catch (error) {
+      setPreviewError('Error generating preview: ' + error.message);
+      setPreviewHtml('');
+    }
+  };
+
+  // Update preview when template changes (with debounce for better performance)
+  useEffect(() => {
+    if (createDialog || editDialog) {
+      const timeoutId = setTimeout(() => {
+        generatePreview(formData.template_html);
+      }, 500); // Wait 500ms after user stops typing
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [formData.template_html, createDialog, editDialog]);
 
   const fetchFormats = async () => {
     try {
@@ -236,19 +293,23 @@ export default function PrintFormatManagement() {
       toast.success('Print format deleted!');
       fetchFormats();
     } catch (error) {
-      toast.error('Failed to delete print format');
+      toast.error(error.response?.data?.detail || 'Failed to delete print format');
     }
   };
 
   const handlePreview = async (formatId) => {
     try {
       const response = await api.post(`/print-formats/${formatId}/preview`, {}, {
-        responseType: 'blob',
+        responseType: 'text'
       });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      window.open(url, '_blank');
+      // Open preview in new window
+      const newWindow = window.open('', '_blank');
+      if (newWindow) {
+        newWindow.document.write(response.data);
+        newWindow.document.close();
+      }
     } catch (error) {
-      toast.error('Failed to preview print format');
+      toast.error(error.response?.data?.detail || 'Failed to preview print format');
     }
   };
 
@@ -261,64 +322,106 @@ export default function PrintFormatManagement() {
   }
 
   const FormatForm = ({ onSubmit, isEdit = false }) => (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="format_name">Format Name</Label>
-        <Input
-          id="format_name"
-          data-testid="format-name-input"
-          placeholder="e.g., Company Letterhead Format"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          required
-        />
+    <div className="grid grid-cols-2 gap-6 h-[80vh]">
+      {/* Left Column - Editor */}
+      <div className="flex flex-col space-y-4 overflow-hidden">
+        <form onSubmit={onSubmit} className="flex flex-col space-y-4 h-full">
+          <div className="space-y-2">
+            <Label htmlFor="format_name">Format Name</Label>
+            <Input
+              id="format_name"
+              data-testid="format-name-input"
+              placeholder="e.g., Company Letterhead Format"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+            />
+          </div>
+          
+          <div className="space-y-2 flex-1 flex flex-col min-h-0">
+            <div className="flex justify-between items-center">
+              <Label htmlFor="template_html">Jinja2 HTML Template</Label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={resetToDefault}
+              >
+                <RefreshCw className="h-3 w-3 mr-1" />
+                Reset to Default
+              </Button>
+            </div>
+            <Textarea
+              id="template_html"
+              data-testid="template-html-input"
+              placeholder="HTML with Jinja2 variables"
+              value={formData.template_html}
+              onChange={(e) => setFormData({ ...formData, template_html: e.target.value })}
+              className="font-mono text-sm flex-1 min-h-0"
+              required
+            />
+            <p className="text-xs text-zinc-500">
+              Available variables: employee_name, employee_id, employee_email, department, month, basic_salary, allowances, deductions, net_pay, generated_date
+            </p>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="is_default"
+              data-testid="is-default-checkbox"
+              checked={formData.is_default}
+              onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
+              className="rounded border-zinc-300"
+            />
+            <Label htmlFor="is_default" className="cursor-pointer">
+              Set as default format
+            </Label>
+          </div>
+
+          <Button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800" data-testid="submit-format-button">
+            {isEdit ? 'Update Format' : 'Create Format'}
+          </Button>
+        </form>
       </div>
-      
-      <div className="space-y-2">
+
+      {/* Right Column - Preview */}
+      <div className="flex flex-col space-y-2 overflow-hidden">
         <div className="flex justify-between items-center">
-          <Label htmlFor="template_html">Jinja2 HTML Template</Label>
+          <Label>Live Preview</Label>
           <Button
             type="button"
             size="sm"
             variant="outline"
-            onClick={resetToDefault}
+            onClick={() => generatePreview(formData.template_html)}
           >
-            Reset to Default
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Refresh
           </Button>
         </div>
-        <Textarea
-          id="template_html"
-          data-testid="template-html-input"
-          placeholder="HTML with Jinja2 variables"
-          value={formData.template_html}
-          onChange={(e) => setFormData({ ...formData, template_html: e.target.value })}
-          rows={15}
-          className="font-mono text-sm"
-          required
-        />
-        <p className="text-xs text-zinc-500">
-          Available variables: employee_name, employee_id, employee_email, department, month, basic_salary, allowances, deductions, net_pay, generated_date
-        </p>
+        <Card className="flex-1 overflow-hidden border-zinc-200">
+          <CardContent className="p-0 h-full overflow-auto">
+            {previewError ? (
+              <div className="p-4 text-red-600 text-sm">
+                {previewError}
+              </div>
+            ) : previewHtml ? (
+              <iframe
+                srcDoc={previewHtml}
+                className="w-full h-full border-0"
+                title="HTML Preview"
+                sandbox="allow-same-origin"
+              />
+            ) : (
+              <div className="p-8 text-center text-zinc-500">
+                <Eye className="h-12 w-12 mx-auto mb-4 text-zinc-400" />
+                <p>Preview will appear here as you type</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
-
-      <div className="flex items-center space-x-2">
-        <input
-          type="checkbox"
-          id="is_default"
-          data-testid="is-default-checkbox"
-          checked={formData.is_default}
-          onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
-          className="rounded border-zinc-300"
-        />
-        <Label htmlFor="is_default" className="cursor-pointer">
-          Set as default format
-        </Label>
-      </div>
-
-      <Button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800" data-testid="submit-format-button">
-        {isEdit ? 'Update Format' : 'Create Format'}
-      </Button>
-    </form>
+    </div>
   );
 
   return (
@@ -337,7 +440,7 @@ export default function PrintFormatManagement() {
               Create Format
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden">
             <DialogHeader>
               <DialogTitle>Create Print Format</DialogTitle>
               <DialogDescription>
@@ -351,7 +454,7 @@ export default function PrintFormatManagement() {
 
       {/* Edit Dialog */}
       <Dialog open={editDialog} onOpenChange={setEditDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden">
           <DialogHeader>
             <DialogTitle>Edit Print Format</DialogTitle>
             <DialogDescription>

@@ -27,7 +27,7 @@ export default function Login({ onLogin }) {
         : formData;
 
       const response = await api.post(endpoint, payload);
-      onLogin(response.data.user, response.data.access_token);
+      onLogin(response.data.user, response.data.access_token, response.data.refresh_token);
       toast.success(isLogin ? 'Login successful!' : 'Registration successful!');
     } catch (error) {
       toast.error(error.response?.data?.detail || 'An error occurred');

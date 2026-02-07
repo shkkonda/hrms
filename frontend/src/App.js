@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/sonner';
 import Login from './pages/Login';
 import AdminDashboard from './pages/AdminDashboard';
 import EmployeeDashboard from './pages/EmployeeDashboard';
+import { logoutUser } from './lib/api';
 import './App.css';
 
 function App() {
@@ -12,22 +13,27 @@ function App() {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
+    const refreshToken = localStorage.getItem('refresh_token');
     const userData = localStorage.getItem('user');
-    if (token && userData) {
+    
+    // If we have refresh token, we can stay logged in (refresh token will handle access token renewal)
+    if ((token || refreshToken) && userData) {
       setUser(JSON.parse(userData));
     }
     setLoading(false);
   }, []);
 
-  const handleLogin = (userData, token) => {
+  const handleLogin = (userData, accessToken, refreshToken) => {
     setUser(userData);
-    localStorage.setItem('token', token);
+    localStorage.setItem('token', accessToken);
+    localStorage.setItem('refresh_token', refreshToken);
     localStorage.setItem('user', JSON.stringify(userData));
   };
 
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
   };
 
